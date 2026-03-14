@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ultimate Tic Tac Toe - Play</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="game-body">
+  <div class="site-shell">
+    <header class="site-header">
+      <a href="index.html" class="brand">UltimateTTT</a>
+
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="index.html#how-it-works">Rules</a>
+        <a href="game.html" class="nav-play-btn">Play</a>
+      </nav>
+    </header>
+
+    <main class="game-layout">
+      <section class="game-headline">
+        <div>
+          <span class="section-kicker">Live board</span>
+          <h1>Ultimate Tic Tac Toe</h1>
+          <p class="subtitle">
+            Lokale Version mit vollständigem Spielbrett und echter Zuglogik.
+          </p>
+        </div>
+
+        <div class="game-actions">
+          <a href="index.html" class="secondary-btn small-btn">Zur Startseite</a>
+          <button id="resetBtn" class="primary-btn small-btn button-reset">Neues Spiel</button>
+        </div>
+      </section>
+
+      <section class="info-panel">
+        <div class="info-card">
+          <span class="label">Aktueller Spieler</span>
+          <span id="currentPlayer" class="value">X</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Nächstes Feld</span>
+          <span id="targetBoard" class="value">Beliebig</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Status</span>
+          <span id="statusText" class="value">Spiel läuft</span>
+        </div>
+      </section>
+
+      <section class="game-board-section">
+        <div id="ultimateBoard" class="ultimate-board"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

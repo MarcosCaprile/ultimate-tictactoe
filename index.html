@@ -6,37 +6,189 @@
   <title>Ultimate Tic Tac Toe</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body>
-  <div class="app">
-    <header class="topbar">
-      <div>
-        <h1>Ultimate Tic Tac Toe</h1>
-        <p class="subtitle">Die erste spielbare Version deiner Website</p>
-      </div>
-      <button id="resetBtn" class="reset-btn">Neues Spiel</button>
+<body class="landing-body">
+  <div class="site-shell">
+    <header class="site-header">
+      <a href="index.html" class="brand">UltimateTTT</a>
+
+      <nav class="nav">
+        <a href="#how-it-works">How it works</a>
+        <a href="#features">Features</a>
+        <a href="game.html" class="nav-play-btn">Play now</a>
+      </nav>
     </header>
 
-    <section class="info-panel">
-      <div class="info-card">
-        <span class="label">Aktueller Spieler</span>
-        <span id="currentPlayer" class="value">X</span>
-      </div>
-
-      <div class="info-card">
-        <span class="label">Nächstes Feld</span>
-        <span id="targetBoard" class="value">Beliebig</span>
-      </div>
-
-      <div class="info-card">
-        <span class="label">Status</span>
-        <span id="statusText" class="value">Spiel läuft</span>
-      </div>
-    </section>
-
     <main>
-      <div id="ultimateBoard" class="ultimate-board"></div>
+      <section class="hero">
+        <div class="hero-copy">
+          <span class="hero-badge">Strategy • Multiplayer-ready • Browser-based</span>
+          <h1>Ultimate Tic Tac Toe, neu gedacht.</h1>
+          <p class="hero-text">
+            Spiele die strategische Erweiterung von Tic Tac Toe in einer modernen Web-App.
+            Lerne die Regeln, starte direkt ein Match und baue mit der Zeit die beste Online-Plattform
+            für Ultimate Tic Tac Toe auf.
+          </p>
+
+          <div class="hero-actions">
+            <a href="game.html" class="primary-btn">Jetzt spielen</a>
+            <a href="#how-it-works" class="secondary-btn">Regeln ansehen</a>
+          </div>
+
+          <div class="hero-stats">
+            <div class="stat-card">
+              <span class="stat-label">Modus</span>
+              <span class="stat-value">Local Prototype</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Board</span>
+              <span class="stat-value">9 Mini-Boards</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Ziel</span>
+              <span class="stat-value">3 Boards in einer Reihe</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="hero-visual">
+          <div class="preview-board">
+            <div class="preview-mini">
+              <span>X</span><span>O</span><span>X</span>
+              <span></span><span>X</span><span></span>
+              <span>O</span><span></span><span>O</span>
+            </div>
+            <div class="preview-mini active">
+              <span></span><span></span><span></span>
+              <span></span><span>X</span><span></span>
+              <span></span><span></span><span></span>
+            </div>
+            <div class="preview-mini">
+              <span>O</span><span></span><span>X</span>
+              <span></span><span>O</span><span></span>
+              <span>X</span><span></span><span></span>
+            </div>
+
+            <div class="preview-mini">
+              <span></span><span>X</span><span></span>
+              <span></span><span>O</span><span></span>
+              <span></span><span>X</span><span></span>
+            </div>
+            <div class="preview-mini won-x">
+              <span>X</span><span>X</span><span>X</span>
+              <span></span><span></span><span></span>
+              <span></span><span></span><span></span>
+            </div>
+            <div class="preview-mini">
+              <span></span><span></span><span>O</span>
+              <span>X</span><span></span><span></span>
+              <span></span><span>O</span><span></span>
+            </div>
+
+            <div class="preview-mini">
+              <span>X</span><span></span><span></span>
+              <span></span><span>O</span><span></span>
+              <span></span><span></span><span>X</span>
+            </div>
+            <div class="preview-mini">
+              <span></span><span></span><span></span>
+              <span></span><span></span><span></span>
+              <span></span><span></span><span></span>
+            </div>
+            <div class="preview-mini won-o">
+              <span>O</span><span></span><span></span>
+              <span>O</span><span></span><span></span>
+              <span>O</span><span></span><span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="how-it-works" class="content-section">
+        <div class="section-heading">
+          <span class="section-kicker">How it works</span>
+          <h2>So funktioniert Ultimate Tic Tac Toe</h2>
+          <p>
+            Das Spiel besteht aus neun kleinen Tic-Tac-Toe-Feldern, die zusammen ein großes Spielfeld bilden.
+          </p>
+        </div>
+
+        <div class="steps-grid">
+          <article class="step-card">
+            <span class="step-number">01</span>
+            <h3>Spiele in einem Mini-Board</h3>
+            <p>
+              Jeder Zug wird zuerst in einem der kleinen 3×3-Felder gesetzt.
+            </p>
+          </article>
+
+          <article class="step-card">
+            <span class="step-number">02</span>
+            <h3>Bestimme das nächste Board</h3>
+            <p>
+              Die Position deines Zuges entscheidet, in welches Mini-Board dein Gegner als Nächstes spielen muss.
+            </p>
+          </article>
+
+          <article class="step-card">
+            <span class="step-number">03</span>
+            <h3>Gewinne kleine Boards</h3>
+            <p>
+              Wenn du in einem Mini-Board drei in einer Reihe hast, gehört dieses Board dir.
+            </p>
+          </article>
+
+          <article class="step-card">
+            <span class="step-number">04</span>
+            <h3>Gewinne das große Spiel</h3>
+            <p>
+              Gewinne drei Mini-Boards in einer Reihe auf dem großen Raster, um das Match zu gewinnen.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="features" class="content-section">
+        <div class="section-heading">
+          <span class="section-kicker">Current version</span>
+          <h2>Was diese Version schon kann</h2>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <h3>Spielbare Browser-Version</h3>
+            <p>Das komplette Ultimate-Tic-Tac-Toe-Brett funktioniert direkt im Browser.</p>
+          </article>
+
+          <article class="feature-card">
+            <h3>Echte Regeln</h3>
+            <p>Mini-Board-Zwang, freie Boardwahl bei gesperrten Feldern und Sieg-Erkennung sind integriert.</p>
+          </article>
+
+          <article class="feature-card">
+            <h3>Klare UI</h3>
+            <p>Aktiver Spieler, nächstes Feld und Spielstatus werden permanent angezeigt.</p>
+          </article>
+
+          <article class="feature-card">
+            <h3>Basis für Multiplayer</h3>
+            <p>Die Logik ist schon so aufgebaut, dass wir später Online-Matches darauf aufsetzen können.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="cta-section">
+        <div class="cta-card">
+          <div>
+            <span class="section-kicker">Ready?</span>
+            <h2>Starte jetzt dein erstes Match</h2>
+            <p>
+              Die aktuelle Version ist lokal spielbar und bereit für die nächsten Ausbaustufen.
+            </p>
+          </div>
+          <a href="game.html" class="primary-btn">Zum Spiel</a>
+        </div>
+      </section>
     </main>
   </div>
-
-  <script src="script.js"></script>
-
+</body>
+</html>
