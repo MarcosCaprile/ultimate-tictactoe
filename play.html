@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Play - Ultimate Tic Tac Toe</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="site-shell">
+    <header class="site-header">
+      <a href="index.html" class="brand">UltimateTTT</a>
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="play.html">Play</a>
+        <a href="game.html" class="nav-play-btn">Game</a>
+      </nav>
+    </header>
+
+    <main class="page-main">
+      <section class="page-hero compact">
+        <span class="section-kicker">Play hub</span>
+        <h1>Wie möchtest du spielen?</h1>
+        <p class="hero-text narrow">
+          Wähle den passenden Modus. Diese Version enthält einen lokalen Spielmodus und eine vorbereitete Lobby-Struktur für private Online-Matches.
+        </p>
+      </section>
+
+      <section class="mode-grid">
+        <article class="mode-card featured">
+          <span class="mode-tag">Ready now</span>
+          <h2>Lokales Spiel</h2>
+          <p>Spiele direkt auf einem Gerät und teste die volle Ultimate-Tic-Tac-Toe-Logik im Browser.</p>
+          <ul class="mode-list">
+            <li>voll spielbares Board</li>
+            <li>Regeln bereits integriert</li>
+            <li>perfekt zum Testen</li>
+          </ul>
+          <a href="game.html?mode=local" class="primary-btn">Local Match starten</a>
+        </article>
+
+        <article class="mode-card">
+          <span class="mode-tag">Next step</span>
+          <h2>Privates Match</h2>
+          <p>Erstelle eine Lobby mit Room-Code. Die UI ist schon da und perfekt vorbereitet für spätere Online-Synchronisation.</p>
+          <ul class="mode-list">
+            <li>Room-Code anzeigen</li>
+            <li>Join per Code</li>
+            <li>ideale Basis für Multiplayer</li>
+          </ul>
+          <a href="lobby.html" class="secondary-btn">Zur Lobby</a>
+        </article>
+
+        <article class="mode-card disabled-card">
+          <span class="mode-tag">Later</span>
+          <h2>Ranked Matchmaking</h2>
+          <p>Automatische Gegnersuche, Rangliste und Matchmaking kommen später, wenn Realtime-Multiplayer eingebaut ist.</p>
+          <ul class="mode-list">
+            <li>globale Gegner</li>
+            <li>Leaderboard</li>
+            <li>Elo / Rating</li>
+          </ul>
+          <span class="disabled-pill">Coming later</span>
+        </article>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

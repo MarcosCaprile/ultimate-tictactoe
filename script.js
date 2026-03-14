@@ -3,6 +3,37 @@ const currentPlayerEl = document.getElementById("currentPlayer");
 const targetBoardEl = document.getElementById("targetBoard");
 const statusTextEl = document.getElementById("statusText");
 const resetBtn = document.getElementById("resetBtn");
+const modeTextEl = document.getElementById("modeText");
+
+const generatedCodeEl = document.getElementById("generatedCode");
+const generateCodeBtn = document.getElementById("generateCodeBtn");
+const joinRoomBtn = document.getElementById("joinRoomBtn");
+const roomInput = document.getElementById("roomInput");
+const joinHint = document.getElementById("joinHint");
+
+if (generatedCodeEl && generateCodeBtn) {
+  generateCodeBtn.addEventListener("click", () => {
+    generatedCodeEl.textContent = generateRoomCode();
+  });
+}
+
+if (joinRoomBtn && roomInput && joinHint) {
+  joinRoomBtn.addEventListener("click", () => {
+    const value = roomInput.value.trim().toUpperCase();
+
+    if (!value) {
+      joinHint.textContent = "Bitte gib zuerst einen Room-Code ein.";
+      return;
+    }
+
+    joinHint.textContent = `Demo-Join vorbereitet für Room ${value}. Realtime kommt im nächsten Schritt.`;
+  });
+}
+
+function generateRoomCode() {
+  const randomPart = Math.floor(1000 + Math.random() * 9000);
+  return `UTTT-${randomPart}`;
+}
 
 if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBtn) {
   const WINNING_COMBINATIONS = [
@@ -23,6 +54,19 @@ if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBt
   let cellStates = Array.from({ length: 9 }, () => Array(9).fill(""));
   let miniBoardWinners = Array(9).fill("");
 
+  if (modeTextEl) {
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get("mode");
+
+    if (mode === "private-host") {
+      modeTextEl.textContent = "Private Host";
+    } else if (mode === "local") {
+      modeTextEl.textContent = "Local";
+    } else {
+      modeTextEl.textContent = "Standard";
+    }
+  }
+
   function createBoard() {
     ultimateBoard.innerHTML = "";
 
@@ -36,6 +80,7 @@ if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBt
         cell.className = "cell";
         cell.dataset.boardIndex = String(boardIndex);
         cell.dataset.cellIndex = String(cellIndex);
+        cell.type = "button";
         cell.addEventListener("click", handleCellClick);
         miniBoard.appendChild(cell);
       }
@@ -106,7 +151,6 @@ if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBt
         return board[a];
       }
     }
-
     return "";
   }
 

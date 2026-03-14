@@ -3,38 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ultimate Tic Tac Toe - Play</title>
+  <title>Ultimate Tic Tac Toe - Game</title>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body class="game-body">
+<body>
   <div class="site-shell">
     <header class="site-header">
       <a href="index.html" class="brand">UltimateTTT</a>
-
       <nav class="nav">
         <a href="index.html">Home</a>
-        <a href="index.html#how-it-works">Rules</a>
-        <a href="game.html" class="nav-play-btn">Play</a>
+        <a href="play.html">Play</a>
+        <a href="lobby.html">Lobby</a>
+        <a href="game.html" class="nav-play-btn">Game</a>
       </nav>
     </header>
 
     <main class="game-layout">
       <section class="game-headline">
         <div>
-          <span class="section-kicker">Live board</span>
+          <span class="section-kicker">Game board</span>
           <h1>Ultimate Tic Tac Toe</h1>
-          <p class="subtitle">
-            Lokale Version mit vollständigem Spielbrett und echter Zuglogik.
-          </p>
+          <p class="subtitle">Spielbares Board mit lokaler Logik und Modus-Anzeige.</p>
         </div>
 
         <div class="game-actions">
-          <a href="index.html" class="secondary-btn small-btn">Zur Startseite</a>
-          <button id="resetBtn" class="primary-btn small-btn button-reset">Neues Spiel</button>
+          <a href="play.html" class="secondary-btn small-btn">Zurück zum Hub</a>
+          <button id="resetBtn" class="primary-btn small-btn button-reset" type="button">Neues Spiel</button>
         </div>
       </section>
 
-      <section class="info-panel">
+      <section class="info-panel four-cols">
+        <div class="info-card">
+          <span class="label">Modus</span>
+          <span id="modeText" class="value">Local</span>
+        </div>
+
         <div class="info-card">
           <span class="label">Aktueller Spieler</span>
           <span id="currentPlayer" class="value">X</span>
