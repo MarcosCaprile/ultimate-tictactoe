@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ultimate Tic Tac Toe</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div>
+        <h1>Ultimate Tic Tac Toe</h1>
+        <p class="subtitle">Die erste spielbare Version deiner Website</p>
+      </div>
+      <button id="resetBtn" class="reset-btn">Neues Spiel</button>
+    </header>
+
+    <section class="info-panel">
+      <div class="info-card">
+        <span class="label">Aktueller Spieler</span>
+        <span id="currentPlayer" class="value">X</span>
+      </div>
+
+      <div class="info-card">
+        <span class="label">Nächstes Feld</span>
+        <span id="targetBoard" class="value">Beliebig</span>
+      </div>
+
+      <div class="info-card">
+        <span class="label">Status</span>
+        <span id="statusText" class="value">Spiel läuft</span>
+      </div>
+    </section>
+
+    <main>
+      <div id="ultimateBoard" class="ultimate-board"></div>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+
