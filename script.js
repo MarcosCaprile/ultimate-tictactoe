@@ -912,6 +912,28 @@ if (
     return boardIndex === nextBoardIndex;
   }
 
+  function createBoard() {
+    ultimateBoard.innerHTML = "";
+
+    for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
+      const miniBoard = document.createElement("div");
+      miniBoard.className = "mini-board";
+      miniBoard.dataset.boardIndex = String(boardIndex);
+
+      for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
+        const cell = document.createElement("button");
+        cell.className = "cell";
+        cell.dataset.boardIndex = String(boardIndex);
+        cell.dataset.cellIndex = String(cellIndex);
+        cell.type = "button";
+        cell.addEventListener("click", handleCellClick);
+        miniBoard.appendChild(cell);
+      }
+
+      ultimateBoard.appendChild(miniBoard);
+    }
+  }
+
   async function handleCellClick(event) {
     const target = event.currentTarget;
     const boardIndex = Number(target.dataset.boardIndex);
