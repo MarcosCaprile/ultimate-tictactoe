@@ -1,4 +1,3 @@
-import { db } from "./firebase.js";
 import {
   doc,
   setDoc,
@@ -7,7 +6,8 @@ import {
   onSnapshot,
   deleteDoc,
   collection,
-  getDocs
+  getDocs,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* =========================
@@ -441,6 +441,7 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
 
   async function ensureQueueEntry() {
     const snapshot = await getDoc(queueRef);
+
     if (!snapshot.exists()) {
       await setDoc(queueRef, {
         queueId,
@@ -465,72 +466,112 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
   async function tryMatchOpponent() {
     if (redirecting) return;
 
-    const ownSnap = await getDoc(queueRef);
-    if (!ownSnap.exists()) return;
+    try {
+      const ownSnap = await getDoc(queueRef);
+      if (!ownSnap.exists()) return;
 
-    const ownEntry = ownSnap.data();
-    if (ownEntry.status !== "waiting") return;
+      const ownEntry = ownSnap.data();
+      if (ownEntry.status !== "waiting") return;
 
-    const allQueuesSnap = await getDocs(collection(db, "matchmakingQueue"));
-    const waitingEntries = [];
+      const allQueuesSnap = await getDocs(collection(db, "matchmakingQueue"));
+      const waitingEntries = [];
 
-    allQueuesSnap.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (
-        docSnap.id !== queueId &&
-        data.status === "waiting" &&
-        !queueShouldBeDeleted(data)
-      ) {
-        waitingEntries.push({ id: docSnap.id, ...data });
-      }
-    });
+      allQueuesSnap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (
+          docSnap.id !== queueId &&
+          data.status === "waiting" &&
+          !queueShouldBeDeleted(data)
+        ) {
+          waitingEntries.push({ id: docSnap.id, ...data });
+        }
+      });
 
-    waitingEntries.sort((a, b) => a.createdAt - b.createdAt);
-    const opponent = waitingEntries[0];
-    if (!opponent) return;
+      waitingEntries.sort((a, b) => a.createdAt - b.createdAt);
+      const opponent = waitingEntries[0];
+      if (!opponent) return;
 
-    const latestOpponentSnap = await getDoc(doc(db, "matchmakingQueue", opponent.id));
-    if (!latestOpponentSnap.exists()) return;
+      const opponentRef = doc(db, "matchmakingQueue", opponent.id);
 
-    const latestOpponent = latestOpponentSnap.data();
-    if (latestOpponent.status !== "waiting") return;
+      const roomCode = await generateUniqueRoomCode();
+      const timestamp = nowMs();
+      const hostToken = `host-${randomToken()}`;
+      const joinToken = `join-${randomToken()}`;
+      const gameRef = doc(db, "games", roomCode);
 
-    const roomCode = await generateUniqueRoomCode();
-    const { hostToken, joinToken } = await createRoom(roomCode);
+      await runTransaction(db, async (transaction) => {
+        const ownFreshSnap = await transaction.get(queueRef);
+        const oppFreshSnap = await transaction.get(opponentRef);
 
-    await updateDoc(doc(db, "games", roomCode), {
-      status: "playing",
-      guest: { name: "Player 2", symbol: "O" },
-      updatedAt: nowMs()
-    });
+        if (!ownFreshSnap.exists() || !oppFreshSnap.exists()) {
+          throw new Error("Queue-Eintrag nicht mehr vorhanden.");
+        }
 
-    await updateDoc(queueRef, {
-      status: "matched",
-      roomCode,
-      authToken: hostToken,
-      role: "host",
-      updatedAt: nowMs()
-    });
+        const ownFresh = ownFreshSnap.data();
+        const oppFresh = oppFreshSnap.data();
 
-    await updateDoc(doc(db, "matchmakingQueue", opponent.id), {
-      status: "matched",
-      roomCode,
-      authToken: joinToken,
-      role: "guest",
-      updatedAt: nowMs()
-    });
+        if (ownFresh.status !== "waiting" || oppFresh.status !== "waiting") {
+          throw new Error("Einer der Spieler wurde bereits gematcht.");
+        }
+
+        transaction.set(gameRef, {
+          roomCode,
+          status: "playing",
+          host: { name: "Player 1", symbol: "X" },
+          guest: { name: "Player 2", symbol: "O" },
+
+          hostToken,
+          joinToken,
+
+          hostConnected: false,
+          hostLastSeen: null,
+          guestConnected: false,
+          guestLastSeen: null,
+
+          currentPlayer: "X",
+          nextBoardIndex: null,
+          cellStates: createEmptyCellStates(),
+          miniBoardWinners: createEmptyMiniWinners(),
+          winner: "",
+
+          createdAt: timestamp,
+          updatedAt: timestamp
+        });
+
+        transaction.update(queueRef, {
+          status: "matched",
+          roomCode,
+          authToken: hostToken,
+          role: "host",
+          updatedAt: timestamp
+        });
+
+        transaction.update(opponentRef, {
+          status: "matched",
+          roomCode,
+          authToken: joinToken,
+          role: "guest",
+          updatedAt: timestamp
+        });
+      });
+    } catch (error) {
+      console.error("Quick-Match-Versuch fehlgeschlagen:", error);
+    }
   }
 
   async function heartbeatQueue() {
     try {
       const snap = await getDoc(queueRef);
       if (!snap.exists()) return;
+
       const data = snap.data();
       if (data.status === "waiting") {
-        await updateDoc(queueRef, { updatedAt: nowMs() });
+        await updateDoc(queueRef, {
+          updatedAt: nowMs()
+        });
       }
     } catch (error) {
-      console.error(error);
+      console.error("Queue-Heartbeat fehlgeschlagen:", error);
     }
   }
 
@@ -538,7 +579,7 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
     try {
       await deleteDoc(queueRef);
     } catch (error) {
-      console.error(error);
+      console.error("Queue-Löschen fehlgeschlagen:", error);
     }
   }
 
