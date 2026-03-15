@@ -433,6 +433,8 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
   }
 
   const queueRef = doc(db, "matchmakingQueue", queueId);
+  const openTicketRef = doc(db, "matchmakingState", "openTicket");
+
   let redirecting = false;
   let matchmakingInterval = null;
 
@@ -463,56 +465,130 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
     }
   }
 
-  async function tryMatchOpponent() {
+  async function tryJoinOrCreateQuickMatch() {
     if (redirecting) return;
 
     try {
-      const ownSnap = await getDoc(queueRef);
-      if (!ownSnap.exists()) return;
-
-      const ownEntry = ownSnap.data();
-      if (ownEntry.status !== "waiting") return;
-
-      const allQueuesSnap = await getDocs(collection(db, "matchmakingQueue"));
-      const waitingEntries = [];
-
-      allQueuesSnap.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (
-          docSnap.id !== queueId &&
-          data.status === "waiting" &&
-          !queueShouldBeDeleted(data)
-        ) {
-          waitingEntries.push({ id: docSnap.id, ...data });
-        }
-      });
-
-      waitingEntries.sort((a, b) => a.createdAt - b.createdAt);
-      const opponent = waitingEntries[0];
-      if (!opponent) return;
-
-      const opponentRef = doc(db, "matchmakingQueue", opponent.id);
-
-      const roomCode = await generateUniqueRoomCode();
-      const timestamp = nowMs();
-      const hostToken = `host-${randomToken()}`;
-      const joinToken = `join-${randomToken()}`;
-      const gameRef = doc(db, "games", roomCode);
-
       await runTransaction(db, async (transaction) => {
-        const ownFreshSnap = await transaction.get(queueRef);
-        const oppFreshSnap = await transaction.get(opponentRef);
+        const ownSnap = await transaction.get(queueRef);
+        const openTicketSnap = await transaction.get(openTicketRef);
 
-        if (!ownFreshSnap.exists() || !oppFreshSnap.exists()) {
-          throw new Error("Queue-Eintrag nicht mehr vorhanden.");
+        if (!ownSnap.exists()) {
+          transaction.set(queueRef, {
+            queueId,
+            status: "waiting",
+            createdAt: nowMs(),
+            updatedAt: nowMs(),
+            roomCode: null,
+            authToken: null,
+            role: null
+          });
         }
 
-        const ownFresh = ownFreshSnap.data();
-        const oppFresh = oppFreshSnap.data();
+        const ownData = ownSnap.exists()
+          ? ownSnap.data()
+          : {
+              queueId,
+              status: "waiting",
+              createdAt: nowMs(),
+              updatedAt: nowMs(),
+              roomCode: null,
+              authToken: null,
+              role: null
+            };
 
-        if (ownFresh.status !== "waiting" || oppFresh.status !== "waiting") {
-          throw new Error("Einer der Spieler wurde bereits gematcht.");
+        if (ownData.status === "matched") {
+          return;
         }
+
+        const openData = openTicketSnap.exists()
+          ? openTicketSnap.data()
+          : { openQueueId: null, updatedAt: 0 };
+
+        const openQueueId = openData.openQueueId || null;
+        const timestamp = nowMs();
+
+        if (!openQueueId || openQueueId === queueId) {
+          transaction.set(
+            openTicketRef,
+            {
+              openQueueId: queueId,
+              updatedAt: timestamp
+            },
+            { merge: true }
+          );
+
+          transaction.set(
+            queueRef,
+            {
+              queueId,
+              status: "waiting",
+              updatedAt: timestamp
+            },
+            { merge: true }
+          );
+
+          return;
+        }
+
+        const opponentRef = doc(db, "matchmakingQueue", openQueueId);
+        const opponentSnap = await transaction.get(opponentRef);
+
+        if (!opponentSnap.exists()) {
+          transaction.set(
+            openTicketRef,
+            {
+              openQueueId: queueId,
+              updatedAt: timestamp
+            },
+            { merge: true }
+          );
+
+          transaction.set(
+            queueRef,
+            {
+              queueId,
+              status: "waiting",
+              updatedAt: timestamp
+            },
+            { merge: true }
+          );
+
+          return;
+        }
+
+        const opponentData = opponentSnap.data();
+        const opponentIsStale =
+          typeof opponentData.updatedAt === "number" &&
+          timestamp - opponentData.updatedAt > MATCHMAKING_WAITING_TIMEOUT_MS;
+
+        if (opponentData.status !== "waiting" || opponentIsStale) {
+          transaction.set(
+            openTicketRef,
+            {
+              openQueueId: queueId,
+              updatedAt: timestamp
+            },
+            { merge: true }
+          );
+
+          transaction.set(
+            queueRef,
+            {
+              queueId,
+              status: "waiting",
+              updatedAt: timestamp
+            },
+            { merge: true }
+          );
+
+          return;
+        }
+
+        const roomCode = generateRoomCode();
+        const hostToken = `host-${randomToken()}`;
+        const joinToken = `join-${randomToken()}`;
+        const gameRef = doc(db, "games", roomCode);
 
         transaction.set(gameRef, {
           roomCode,
@@ -538,7 +614,7 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
           updatedAt: timestamp
         });
 
-        transaction.update(queueRef, {
+        transaction.update(opponentRef, {
           status: "matched",
           roomCode,
           authToken: hostToken,
@@ -546,29 +622,49 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
           updatedAt: timestamp
         });
 
-        transaction.update(opponentRef, {
-          status: "matched",
-          roomCode,
-          authToken: joinToken,
-          role: "guest",
-          updatedAt: timestamp
-        });
+        transaction.set(
+          queueRef,
+          {
+            queueId,
+            status: "matched",
+            roomCode,
+            authToken: joinToken,
+            role: "guest",
+            updatedAt: timestamp
+          },
+          { merge: true }
+        );
+
+        transaction.set(
+          openTicketRef,
+          {
+            openQueueId: null,
+            updatedAt: timestamp
+          },
+          { merge: true }
+        );
       });
     } catch (error) {
-      console.error("Quick-Match-Versuch fehlgeschlagen:", error);
+      console.error("Quick-Match-Transaktion fehlgeschlagen:", error);
     }
   }
 
   async function heartbeatQueue() {
     try {
-      const snap = await getDoc(queueRef);
-      if (!snap.exists()) return;
+      const timestamp = nowMs();
 
-      const data = snap.data();
-      if (data.status === "waiting") {
-        await updateDoc(queueRef, {
-          updatedAt: nowMs()
-        });
+      await updateDoc(queueRef, {
+        updatedAt: timestamp
+      }).catch(() => {});
+
+      const openTicketSnap = await getDoc(openTicketRef);
+      if (openTicketSnap.exists()) {
+        const openData = openTicketSnap.data();
+        if (openData.openQueueId === queueId) {
+          await updateDoc(openTicketRef, {
+            updatedAt: timestamp
+          }).catch(() => {});
+        }
       }
     } catch (error) {
       console.error("Queue-Heartbeat fehlgeschlagen:", error);
@@ -577,7 +673,18 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
 
   async function removeQueueEntry() {
     try {
-      await deleteDoc(queueRef);
+      const openTicketSnap = await getDoc(openTicketRef);
+      if (openTicketSnap.exists()) {
+        const openData = openTicketSnap.data();
+        if (openData.openQueueId === queueId) {
+          await updateDoc(openTicketRef, {
+            openQueueId: null,
+            updatedAt: nowMs()
+          }).catch(() => {});
+        }
+      }
+
+      await deleteDoc(queueRef).catch(() => {});
     } catch (error) {
       console.error("Queue-Löschen fehlgeschlagen:", error);
     }
@@ -612,7 +719,8 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
 
       if (data.status === "waiting") {
         queueStatusTextEl.textContent = "Suche läuft";
-        queueDetailTextEl.textContent = "Sobald ein anderer Spieler sucht, wird automatisch ein Match erstellt.";
+        queueDetailTextEl.textContent =
+          "Sobald ein anderer Spieler sucht, wird automatisch ein Match erstellt.";
         queueHintEl.textContent = "Noch kein Gegner gefunden.";
       }
 
@@ -622,7 +730,6 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
         queueHintEl.textContent = "Weiterleitung ins Spiel...";
 
         if (matchmakingInterval) clearInterval(matchmakingInterval);
-        await removeQueueEntry();
 
         const isHost = data.role === "host";
         window.location.href = isHost
@@ -633,10 +740,10 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
 
     matchmakingInterval = setInterval(async () => {
       await heartbeatQueue();
-      await tryMatchOpponent();
+      await tryJoinOrCreateQuickMatch();
     }, MATCHMAKING_CHECK_INTERVAL_MS);
 
-    tryMatchOpponent();
+    tryJoinOrCreateQuickMatch();
   });
 }
 
