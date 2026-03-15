@@ -10,6 +10,10 @@ import {
   getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+/* =========================
+   DOM
+   ========================= */
+
 const generatedCodeEl = document.getElementById("generatedCode");
 const generateCodeBtn = document.getElementById("generateCodeBtn");
 const createHint = document.getElementById("createHint");
@@ -37,6 +41,10 @@ const playerRoleTextEl = document.getElementById("playerRoleText");
 const opponentStatusTextEl = document.getElementById("opponentStatusText");
 const gameSubtitleEl = document.getElementById("gameSubtitle");
 
+/* =========================
+   KONSTANTEN
+   ========================= */
+
 const WINNING_COMBINATIONS = [
   [0, 1, 2],
   [3, 4, 5],
@@ -62,8 +70,9 @@ const MATCHMAKING_DOC_PREFIX = "queue-";
 const MATCHMAKING_WAITING_TIMEOUT_MS = 45000;
 const MATCHMAKING_CHECK_INTERVAL_MS = 2500;
 
-let isCreatingRoom = false;
-let isJoiningRoom = false;
+/* =========================
+   HILFSFUNKTIONEN
+   ========================= */
 
 function nowMs() {
   return Date.now();
@@ -96,12 +105,10 @@ function getMiniBoard(cellStates, boardIndex) {
 
 function randomCodePart(length) {
   let result = "";
-
   for (let i = 0; i < length; i++) {
     const index = Math.floor(Math.random() * ROOM_CODE_ALPHABET.length);
     result += ROOM_CODE_ALPHABET[index];
   }
-
   return result;
 }
 
@@ -114,8 +121,7 @@ function generateRoomCode() {
 }
 
 function getWinner(board) {
-  for (const combination of WINNING_COMBINATIONS) {
-    const [a, b, c] = combination;
+  for (const [a, b, c] of WINNING_COMBINATIONS) {
     if (board[a] && board[a] === board[b] && board[a] === board[c]) {
       return board[a];
     }
@@ -124,10 +130,10 @@ function getWinner(board) {
 }
 
 function findWinningLine(board) {
-  for (const combination of WINNING_COMBINATIONS) {
-    const [a, b, c] = combination;
+  for (const combo of WINNING_COMBINATIONS) {
+    const [a, b, c] = combo;
     if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-      return combination;
+      return combo;
     }
   }
   return null;
@@ -216,10 +222,8 @@ function queueShouldBeDeleted(queueEntry) {
 async function cleanupExpiredRooms() {
   try {
     const snapshot = await getDocs(collection(db, "games"));
-
     for (const roomDoc of snapshot.docs) {
       const game = roomDoc.data();
-
       if (roomShouldBeDeleted(game)) {
         await deleteDoc(roomDoc.ref);
       }
@@ -232,7 +236,6 @@ async function cleanupExpiredRooms() {
 async function cleanupExpiredQueue() {
   try {
     const snapshot = await getDocs(collection(db, "matchmakingQueue"));
-
     for (const queueDoc of snapshot.docs) {
       const entry = queueDoc.data();
       if (queueShouldBeDeleted(entry)) {
@@ -240,7 +243,7 @@ async function cleanupExpiredQueue() {
       }
     }
   } catch (error) {
-    console.error("Fehler beim Aufräumen der Matchmaking-Queue:", error);
+    console.error("Fehler beim Aufräumen der Queue:", error);
   }
 }
 
@@ -254,13 +257,9 @@ async function generateUniqueRoomCode() {
   for (let attempt = 0; attempt < MAX_ROOM_CODE_ATTEMPTS; attempt++) {
     const roomCode = generateRoomCode();
     const exists = await roomExists(roomCode);
-
-    if (!exists) {
-      return roomCode;
-    }
+    if (!exists) return roomCode;
   }
-
-  throw new Error("Es konnte kein freier Room-Code erzeugt werden. Bitte versuche es erneut.");
+  throw new Error("Es konnte kein freier Room-Code erzeugt werden.");
 }
 
 function buildHostGameUrl(roomCode, hostToken, isRandom = false) {
@@ -292,10 +291,7 @@ async function createRoom(roomCode) {
   await setDoc(roomRef, {
     roomCode,
     status: "waiting",
-    host: {
-      name: "Player 1",
-      symbol: "X"
-    },
+    host: { name: "Player 1", symbol: "X" },
     guest: null,
 
     hostToken,
@@ -319,6 +315,10 @@ async function createRoom(roomCode) {
   return { hostToken, joinToken };
 }
 
+/* =========================
+   LOBBY / PRIVATE MATCH
+   ========================= */
+
 if (roomInput) {
   const joinCode = readJoinCodeFromLobbyUrl();
   if (joinCode) {
@@ -334,7 +334,6 @@ if (generateCodeBtn && generatedCodeEl && createHint) {
 
   generateCodeBtn.addEventListener("click", async () => {
     if (isCreatingRoom) return;
-
     isCreatingRoom = true;
     generateCodeBtn.disabled = true;
     createHint.textContent = "Sicherer Room-Code wird erzeugt...";
@@ -349,8 +348,8 @@ if (generateCodeBtn && generatedCodeEl && createHint) {
       createHint.textContent = `Room ${roomCode} erstellt. Weiterleitung als Host...`;
       window.location.href = buildHostGameUrl(roomCode, hostToken, false);
     } catch (error) {
-      console.error("Fehler beim Erstellen des Rooms:", error);
-      createHint.textContent = `Fehler beim Erstellen des Rooms: ${error.message}`;
+      console.error(error);
+      createHint.textContent = `Fehler: ${error.message}`;
       generateCodeBtn.disabled = false;
       isCreatingRoom = false;
     }
@@ -364,7 +363,6 @@ if (joinRoomBtn && roomInput && joinHint) {
     if (isJoiningRoom) return;
 
     const roomCode = roomInput.value.trim().toUpperCase();
-
     if (!roomCode) {
       joinHint.textContent = "Bitte gib zuerst einen Room-Code ein.";
       return;
@@ -410,10 +408,7 @@ if (joinRoomBtn && roomInput && joinHint) {
       }
 
       await updateDoc(gameRef, {
-        guest: {
-          name: "Player 2",
-          symbol: "O"
-        },
+        guest: { name: "Player 2", symbol: "O" },
         guestConnected: false,
         guestLastSeen: null,
         status: "playing",
@@ -422,8 +417,8 @@ if (joinRoomBtn && roomInput && joinHint) {
 
       window.location.href = buildGuestGameUrl(roomCode, game.joinToken, false);
     } catch (error) {
-      console.error("Fehler beim Joinen des Rooms:", error);
-      joinHint.textContent = `Fehler beim Joinen des Rooms: ${error.message}`;
+      console.error(error);
+      joinHint.textContent = `Fehler: ${error.message}`;
       joinRoomBtn.disabled = false;
       isJoiningRoom = false;
     }
@@ -431,7 +426,7 @@ if (joinRoomBtn && roomInput && joinHint) {
 }
 
 /* =========================
-   QUICK MATCH / RANDOM MODE
+   QUICK MATCH
    ========================= */
 
 if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
@@ -442,16 +437,14 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
   }
 
   const queueRef = doc(db, "matchmakingQueue", queueId);
-  let queueWatcherActive = true;
-  let matchmakingInterval = null;
   let redirecting = false;
+  let matchmakingInterval = null;
 
   cleanupExpiredRooms();
   cleanupExpiredQueue();
 
   async function ensureQueueEntry() {
     const snapshot = await getDoc(queueRef);
-
     if (!snapshot.exists()) {
       await setDoc(queueRef, {
         queueId,
@@ -497,7 +490,6 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
     });
 
     waitingEntries.sort((a, b) => a.createdAt - b.createdAt);
-
     const opponent = waitingEntries[0];
     if (!opponent) return;
 
@@ -512,10 +504,7 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
 
     await updateDoc(doc(db, "games", roomCode), {
       status: "playing",
-      guest: {
-        name: "Player 2",
-        symbol: "O"
-      },
+      guest: { name: "Player 2", symbol: "O" },
       updatedAt: nowMs()
     });
 
@@ -540,15 +529,12 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
     try {
       const snap = await getDoc(queueRef);
       if (!snap.exists()) return;
-
       const data = snap.data();
       if (data.status === "waiting") {
-        await updateDoc(queueRef, {
-          updatedAt: nowMs()
-        });
+        await updateDoc(queueRef, { updatedAt: nowMs() });
       }
     } catch (error) {
-      console.error("Queue-Heartbeat fehlgeschlagen:", error);
+      console.error(error);
     }
   }
 
@@ -556,15 +542,12 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
     try {
       await deleteDoc(queueRef);
     } catch (error) {
-      console.error("Queue-Löschen fehlgeschlagen:", error);
+      console.error(error);
     }
   }
 
   cancelQueueBtn.addEventListener("click", async () => {
-    queueWatcherActive = false;
-    if (matchmakingInterval) {
-      clearInterval(matchmakingInterval);
-    }
+    if (matchmakingInterval) clearInterval(matchmakingInterval);
     await removeQueueEntry();
     window.location.href = "play.html";
   });
@@ -580,7 +563,7 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
     queueHintEl.textContent = "Warte auf einen zufälligen Gegner...";
 
     onSnapshot(queueRef, async (snapshot) => {
-      if (!queueWatcherActive || redirecting) return;
+      if (redirecting) return;
 
       if (!snapshot.exists()) {
         queueStatusTextEl.textContent = "Queue beendet";
@@ -601,10 +584,7 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
         queueStatusTextEl.textContent = "Match gefunden!";
         queueHintEl.textContent = "Weiterleitung ins Spiel...";
 
-        if (matchmakingInterval) {
-          clearInterval(matchmakingInterval);
-        }
-
+        if (matchmakingInterval) clearInterval(matchmakingInterval);
         await removeQueueEntry();
 
         const isHost = data.role === "host";
@@ -624,7 +604,7 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
 }
 
 /* =========================
-   GAME LOGIC
+   SPIELSEITE
    ========================= */
 
 if (
@@ -641,18 +621,17 @@ if (
   let currentPlayer = "X";
   let nextBoardIndex = null;
   let gameOver = false;
-
   let cellStates = createEmptyCellStates();
   let miniBoardWinners = createEmptyMiniWinners();
 
   const roomCode = readRoomCode();
   const authToken = readAuthToken();
-  let mode = readGameMode();
-  let playerSymbol = "X";
+  let mode = readGameMode() || "local";
   const isRealtimeGame = Boolean(roomCode);
   const isBotMode = mode === "bot-easy" || mode === "bot-medium" || mode === "bot-hard";
   const botDifficulty = isBotMode ? mode.replace("bot-", "") : null;
 
+  let playerSymbol = "X";
   let currentGameStatus = "waiting";
   let opponentOnline = false;
   const roomRef = roomCode ? doc(db, "games", roomCode) : null;
@@ -680,9 +659,6 @@ if (
     } else if (mode === "random-guest") {
       modeTextEl.textContent = "Random Match";
       playerSymbol = "O";
-    } else if (mode === "local") {
-      modeTextEl.textContent = "Local";
-      playerSymbol = "X";
     } else if (mode === "bot-easy") {
       modeTextEl.textContent = "Bot Easy";
       playerSymbol = "X";
@@ -693,8 +669,9 @@ if (
       modeTextEl.textContent = "Bot Hard";
       playerSymbol = "X";
     } else {
-      modeTextEl.textContent = isRealtimeGame ? "Online Match" : "Standard";
+      modeTextEl.textContent = "Local";
       playerSymbol = "X";
+      mode = "local";
     }
 
     playerRoleTextEl.textContent = playerSymbol;
@@ -703,24 +680,26 @@ if (
     if (isBotMode) {
       opponentOnline = true;
       opponentStatusTextEl.textContent = `Bot (${botDifficulty})`;
+    } else if (isRealtimeGame) {
+      opponentStatusTextEl.textContent = "Wird geprüft...";
     } else {
-      opponentStatusTextEl.textContent = isRealtimeGame ? "Wird geprüft..." : "Nicht relevant";
+      opponentStatusTextEl.textContent = "Nicht relevant";
     }
 
     if (gameSubtitleEl) {
       if (mode === "random-host" || mode === "random-guest") {
-        gameSubtitleEl.textContent = `Random Match gegen einen zufälligen Online-Gegner.`;
+        gameSubtitleEl.textContent = "Random Match gegen einen zufälligen Online-Gegner.";
       } else if (isBotMode) {
         gameSubtitleEl.textContent = `Offline gegen Bot (${botDifficulty}).`;
       } else if (roomCode) {
         gameSubtitleEl.textContent = `Verbunden mit Room ${roomCode}.`;
       } else {
-        gameSubtitleEl.textContent = "Lokales Spiel ohne Realtime-Room.";
+        gameSubtitleEl.textContent = "Lokales Spiel auf einem Gerät.";
       }
     }
 
     if (copyJoinLinkBtn) {
-      copyJoinLinkBtn.style.display = roomCode && !mode?.startsWith("random-") ? "inline-flex" : "none";
+      copyJoinLinkBtn.style.display = roomCode && !mode.startsWith("random-") ? "inline-flex" : "none";
     }
 
     if (copyRoomCodeBtn) {
@@ -761,9 +740,7 @@ if (
 
     for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
       if (stateMiniBoardWinners[boardIndex] !== "") continue;
-
-      const boardAllowed = stateNextBoardIndex === null || stateNextBoardIndex === boardIndex;
-      if (!boardAllowed) continue;
+      if (stateNextBoardIndex !== null && stateNextBoardIndex !== boardIndex) continue;
 
       for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
         if (getCellValue(stateCellStates, boardIndex, cellIndex) === "") {
@@ -790,10 +767,7 @@ if (
       newMiniBoardWinners[boardIndex] = "draw";
     }
 
-    const normalizedGlobalBoard = newMiniBoardWinners.map((value) => {
-      return value === "draw" ? "" : value;
-    });
-
+    const normalizedGlobalBoard = newMiniBoardWinners.map((value) => value === "draw" ? "" : value);
     const foundGlobalWinner = getWinner(normalizedGlobalBoard);
     const foundWinningLine = findWinningLine(normalizedGlobalBoard);
 
@@ -850,16 +824,16 @@ if (
 
   function evaluateBoardForBot(stateCellStates, stateMiniBoardWinners) {
     let score = 0;
-    const normalizedGlobalBoard = stateMiniBoardWinners.map((value) => (value === "draw" ? "" : value));
+    const normalizedGlobalBoard = stateMiniBoardWinners.map((value) => value === "draw" ? "" : value);
     const globalWinnerFound = getWinner(normalizedGlobalBoard);
 
     if (globalWinnerFound === "O") score += 100000;
     if (globalWinnerFound === "X") score -= 100000;
 
     stateMiniBoardWinners.forEach((winner, index) => {
-      const centerBonus = index === 4 ? 18 : [0, 2, 6, 8].includes(index) ? 10 : 6;
-      if (winner === "O") score += 60 + centerBonus;
-      if (winner === "X") score -= 60 + centerBonus;
+      const bonus = index === 4 ? 18 : [0, 2, 6, 8].includes(index) ? 10 : 6;
+      if (winner === "O") score += 60 + bonus;
+      if (winner === "X") score -= 60 + bonus;
     });
 
     WINNING_COMBINATIONS.forEach(([a, b, c]) => {
@@ -886,8 +860,6 @@ if (
 
         if (oCount === 2 && emptyCount === 1) score += 22;
         if (xCount === 2 && emptyCount === 1) score -= 24;
-        if (oCount === 1 && emptyCount === 2) score += 4;
-        if (xCount === 1 && emptyCount === 2) score -= 4;
       });
 
       if (mini[4] === "O") score += 5;
@@ -924,9 +896,9 @@ if (
         score += 500000;
       }
 
-      const centerBoardBonus = move.boardIndex === 4 ? 14 : [0, 2, 6, 8].includes(move.boardIndex) ? 8 : 4;
-      const centerCellBonus = move.cellIndex === 4 ? 12 : [0, 2, 6, 8].includes(move.cellIndex) ? 6 : 3;
-      score += centerBoardBonus + centerCellBonus;
+      const boardBonus = move.boardIndex === 4 ? 14 : [0, 2, 6, 8].includes(move.boardIndex) ? 8 : 4;
+      const cellBonus = move.cellIndex === 4 ? 12 : [0, 2, 6, 8].includes(move.cellIndex) ? 6 : 3;
+      score += boardBonus + cellBonus;
 
       if (botDifficulty === "hard" && !botState.gameOver) {
         const opponentMoves = getAllValidMovesForState(
@@ -935,7 +907,7 @@ if (
           botState.nextBoardIndex
         );
 
-        let opponentBestScore = -Infinity;
+        let opponentBest = -Infinity;
 
         for (const oppMove of opponentMoves) {
           const oppState = buildNextStateFrom(
@@ -948,18 +920,12 @@ if (
           );
 
           let oppScore = -evaluateBoardForBot(oppState.cellStates, oppState.miniBoardWinners);
-
-          if (oppState.winner === "X") {
-            oppScore += 400000;
-          }
-
-          if (oppScore > opponentBestScore) {
-            opponentBestScore = oppScore;
-          }
+          if (oppState.winner === "X") oppScore += 400000;
+          if (oppScore > opponentBest) opponentBest = oppScore;
         }
 
-        if (opponentBestScore !== -Infinity) {
-          score -= opponentBestScore * 0.8;
+        if (opponentBest !== -Infinity) {
+          score -= opponentBest * 0.8;
         }
       }
 
@@ -1009,6 +975,26 @@ if (
       botThinking = false;
       render();
     }, botDifficulty === "easy" ? 350 : botDifficulty === "medium" ? 500 : 650);
+  }
+
+  function isMoveAllowed(boardIndex, cellIndex) {
+    if (getCellValue(cellStates, boardIndex, cellIndex) !== "") return false;
+    if (miniBoardWinners[boardIndex] !== "") return false;
+    if (gameOver) return false;
+
+    if (isRealtimeGame) {
+      if (currentGameStatus !== "playing") return false;
+      if (currentPlayer !== playerSymbol) return false;
+      if (!opponentOnline) return false;
+    }
+
+    if (isBotMode) {
+      if (currentPlayer !== "X") return false;
+      if (botThinking) return false;
+    }
+
+    if (nextBoardIndex === null) return true;
+    return boardIndex === nextBoardIndex;
   }
 
   function getLineCoordinates(line) {
@@ -1114,14 +1100,12 @@ if (
 
     const overlay = document.createElement("div");
     overlay.className = `game-result-overlay ${overlayData.variant}`;
-
     overlay.innerHTML = `
       <div class="game-result-inner">
         <div class="game-result-title">${overlayData.title}</div>
         <div class="game-result-subtitle">${overlayData.subtitle}</div>
       </div>
     `;
-
     ultimateBoard.appendChild(overlay);
   }
 
@@ -1130,7 +1114,9 @@ if (
     const boardIndex = Number(target.dataset.boardIndex);
     const cellIndex = Number(target.dataset.cellIndex);
 
-    if (!isMoveAllowed(boardIndex, cellIndex)) return;
+    if (!isMoveAllowed(boardIndex, cellIndex)) {
+      return;
+    }
 
     const nextState = buildNextState(boardIndex, cellIndex);
 
@@ -1188,7 +1174,6 @@ if (
       if (boardWinner === "draw") miniBoard.classList.add("drawn");
 
       const cells = miniBoard.querySelectorAll(".cell");
-
       cells.forEach((cell, cellIndex) => {
         const value = getCellValue(cellStates, boardIndex, cellIndex);
         cell.textContent = value;
@@ -1234,7 +1219,6 @@ if (
         opponentStatusTextEl.textContent = "Noch nicht beigetreten";
         return;
       }
-
       if (guestOnline) {
         opponentOnline = true;
         opponentStatusTextEl.textContent = "Online";
@@ -1242,7 +1226,6 @@ if (
         opponentOnline = false;
         opponentStatusTextEl.textContent = "Offline / getrennt";
       }
-
       return;
     }
 
@@ -1308,13 +1291,12 @@ if (
     try {
       await updateDoc(roomRef, payload);
     } catch (error) {
-      console.error("Fehler beim Presence-Update:", error);
+      console.error(error);
     }
   }
 
   function startHeartbeat() {
     if (!isRealtimeGame) return;
-
     heartbeatInterval = window.setInterval(() => {
       updateOwnPresence(true);
     }, HEARTBEAT_INTERVAL_MS);
@@ -1322,7 +1304,7 @@ if (
 
   function stopHeartbeat() {
     if (heartbeatInterval) {
-      window.clearInterval(heartbeatInterval);
+      clearInterval(heartbeatInterval);
       heartbeatInterval = null;
     }
   }
@@ -1332,16 +1314,14 @@ if (
 
     try {
       const snapshot = await getDoc(roomRef);
-
       if (!snapshot.exists()) return;
 
       const game = snapshot.data();
-
       if (bothPlayersOffline(game)) {
         await deleteDoc(roomRef);
       }
     } catch (error) {
-      console.error("Fehler beim Prüfen/Löschen eines leeren Rooms:", error);
+      console.error(error);
     }
   }
 
@@ -1358,7 +1338,7 @@ if (
       await updateOwnPresence(false);
       await maybeDeleteRoomIfEmpty();
     } catch (error) {
-      console.error("Fehler beim Verlassen des Rooms:", error);
+      console.error(error);
     }
 
     window.location.href = "play.html";
@@ -1366,14 +1346,13 @@ if (
 
   async function handleBestEffortLeave() {
     if (!isRealtimeGame || !roomRef || isLeavingRoom) return;
-
     stopHeartbeat();
 
     try {
       await updateOwnPresence(false);
       await maybeDeleteRoomIfEmpty();
     } catch (error) {
-      console.error("Best-effort leave fehlgeschlagen:", error);
+      console.error(error);
     }
   }
 
@@ -1412,14 +1391,12 @@ if (
 
     try {
       const snapshot = await getDoc(roomRef);
-
       if (!snapshot.exists()) {
         statusTextEl.textContent = "Room wurde nicht gefunden.";
         return false;
       }
 
       const game = snapshot.data();
-
       roomJoinToken = game.joinToken ?? null;
 
       if (!authToken) {
@@ -1428,12 +1405,8 @@ if (
       }
 
       if (authToken === game.hostToken) {
-        if (mode === "random-host") {
-          playerSymbol = "X";
-        } else {
-          mode = mode === "random-host" ? "random-host" : "private-host";
-          playerSymbol = "X";
-        }
+        if (mode !== "random-host") mode = "private-host";
+        playerSymbol = "X";
 
         await updateDoc(roomRef, {
           hostConnected: true,
@@ -1445,12 +1418,8 @@ if (
       }
 
       if (authToken === game.joinToken) {
-        if (mode === "random-guest") {
-          playerSymbol = "O";
-        } else {
-          mode = mode === "random-guest" ? "random-guest" : "private-guest";
-          playerSymbol = "O";
-        }
+        if (mode !== "random-guest") mode = "private-guest";
+        playerSymbol = "O";
 
         const payload = {
           guestConnected: true,
@@ -1459,10 +1428,7 @@ if (
         };
 
         if (!game.guest) {
-          payload.guest = {
-            name: "Player 2",
-            symbol: "O"
-          };
+          payload.guest = { name: "Player 2", symbol: "O" };
         }
 
         if (game.status === "waiting") {
@@ -1476,7 +1442,7 @@ if (
       statusTextEl.textContent = "Ungültiger Zugangslink für diesen Room.";
       return false;
     } catch (error) {
-      console.error("Fehler bei Token-Ownership:", error);
+      console.error(error);
       statusTextEl.textContent = "Reconnect fehlgeschlagen.";
       return false;
     }
@@ -1487,7 +1453,6 @@ if (
 
     ensureTokenOwnership().then((allowed) => {
       if (!allowed) return;
-
       setModeDisplay();
       updateOwnPresence(true);
       startHeartbeat();
@@ -1507,7 +1472,7 @@ if (
           await deleteDoc(roomRef);
           statusTextEl.textContent = "Room war inaktiv und wurde gelöscht.";
         } catch (error) {
-          console.error("Fehler beim Löschen eines inaktiven Rooms:", error);
+          console.error(error);
         }
         return;
       }
@@ -1517,6 +1482,112 @@ if (
 
     window.addEventListener("pagehide", handleBestEffortLeave);
     window.addEventListener("beforeunload", handleBestEffortLeave);
+  }
+
+  function getResultOverlayData() {
+    if (!gameOver || !globalWinner) {
+      if (globalWinner === "draw") {
+        return {
+          variant: "draw",
+          title: "Unentschieden",
+          subtitle: "Keiner hat das Match gewonnen."
+        };
+      }
+      return null;
+    }
+
+    if (!isRealtimeGame && !isBotMode) {
+      return {
+        variant: "win",
+        title: `Spieler ${globalWinner} gewinnt!`,
+        subtitle: "Das Spiel ist entschieden."
+      };
+    }
+
+    if (isBotMode) {
+      if (globalWinner === "X") {
+        return {
+          variant: "win",
+          title: "Du gewinnst!",
+          subtitle: `Du hast Bot (${botDifficulty}) besiegt.`
+        };
+      }
+      if (globalWinner === "O") {
+        return {
+          variant: "loss",
+          title: "Du verlierst!",
+          subtitle: `Bot (${botDifficulty}) hat gewonnen.`
+        };
+      }
+    }
+
+    if (globalWinner === playerSymbol) {
+      return {
+        variant: "win",
+        title: "Du gewinnst!",
+        subtitle: "Starker Zug — das Match gehört dir."
+      };
+    }
+
+    return {
+      variant: "loss",
+      title: "Du verlierst!",
+      subtitle: `Spieler ${globalWinner} hat das Match gewonnen.`
+    };
+  }
+
+  function renderGlobalEffects() {
+    const existingLine = ultimateBoard.querySelector(".global-win-line");
+    if (existingLine) existingLine.remove();
+
+    const existingOverlay = ultimateBoard.querySelector(".game-result-overlay");
+    if (existingOverlay) existingOverlay.remove();
+
+    if (globalWinningLine && globalWinner && globalWinner !== "draw") {
+      const coords = (() => {
+        const centerMap = {
+          0: { x: 16.67, y: 16.67 },
+          1: { x: 50, y: 16.67 },
+          2: { x: 83.33, y: 16.67 },
+          3: { x: 16.67, y: 50 },
+          4: { x: 50, y: 50 },
+          5: { x: 83.33, y: 50 },
+          6: { x: 16.67, y: 83.33 },
+          7: { x: 50, y: 83.33 },
+          8: { x: 83.33, y: 83.33 }
+        };
+
+        const start = centerMap[globalWinningLine[0]];
+        const end = centerMap[globalWinningLine[2]];
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+        return { left: start.x, top: start.y, width: length, angle };
+      })();
+
+      const line = document.createElement("div");
+      line.className = `global-win-line ${globalWinner.toLowerCase()}`;
+      line.style.left = `${coords.left}%`;
+      line.style.top = `${coords.top}%`;
+      line.style.width = `${coords.width}%`;
+      line.style.transform = `translateY(-50%) rotate(${coords.angle}deg) scaleX(1)`;
+      ultimateBoard.appendChild(line);
+    }
+
+    const overlayData = getResultOverlayData();
+    if (!overlayData) return;
+
+    const overlay = document.createElement("div");
+    overlay.className = `game-result-overlay ${overlayData.variant}`;
+    overlay.innerHTML = `
+      <div class="game-result-inner">
+        <div class="game-result-title">${overlayData.title}</div>
+        <div class="game-result-subtitle">${overlayData.subtitle}</div>
+      </div>
+    `;
+    ultimateBoard.appendChild(overlay);
   }
 
   if (copyRoomCodeBtn) {
@@ -1531,7 +1602,7 @@ if (
         statusTextEl.textContent = "Room-Code kopiert.";
       } catch (error) {
         console.error(error);
-        statusTextEl.textContent = "Kopieren des Room-Codes fehlgeschlagen.";
+        statusTextEl.textContent = "Kopieren fehlgeschlagen.";
       }
     });
   }
@@ -1548,7 +1619,7 @@ if (
         statusTextEl.textContent = "Join-Link kopiert.";
       } catch (error) {
         console.error(error);
-        statusTextEl.textContent = "Kopieren des Join-Links fehlgeschlagen.";
+        statusTextEl.textContent = "Kopieren fehlgeschlagen.";
       }
     });
   }
@@ -1564,7 +1635,8 @@ if (
 
   if (isRealtimeGame) {
     setupRealtimeRoom();
-  } else if (isBotMode) {
+  } else {
+    render();
     maybeTriggerBotMove();
   }
 }
