@@ -4,7 +4,10 @@ import {
   setDoc,
   getDoc,
   updateDoc,
-  onSnapshot
+  onSnapshot,
+  deleteDoc,
+  collection,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const generatedCodeEl = document.getElementById("generatedCode");
@@ -20,9 +23,11 @@ const currentPlayerEl = document.getElementById("currentPlayer");
 const targetBoardEl = document.getElementById("targetBoard");
 const statusTextEl = document.getElementById("statusText");
 const resetBtn = document.getElementById("resetBtn");
+const leaveRoomBtn = document.getElementById("leaveRoomBtn");
 const modeTextEl = document.getElementById("modeText");
 const roomCodeTextEl = document.getElementById("roomCodeText");
 const playerRoleTextEl = document.getElementById("playerRoleText");
+const opponentStatusTextEl = document.getElementById("opponentStatusText");
 const gameSubtitleEl = document.getElementById("gameSubtitle");
 
 const WINNING_COMBINATIONS = [
@@ -41,8 +46,17 @@ const ROOM_CODE_LENGTH = 6;
 const ROOM_CODE_PREFIX = "UTTT";
 const MAX_ROOM_CODE_ATTEMPTS = 25;
 
+const HEARTBEAT_INTERVAL_MS = 5000;
+const PLAYER_STALE_AFTER_MS = 15000;
+const ROOM_DELETE_AFTER_EMPTY_MS = 25000;
+const FINISHED_ROOM_RETENTION_MS = 5 * 60 * 1000;
+
 let isCreatingRoom = false;
 let isJoiningRoom = false;
+
+function nowMs() {
+  return Date.now();
+}
 
 function createEmptyCellStates() {
   return Array(81).fill("");
@@ -114,6 +128,57 @@ function readRoomCode() {
   return params.get("room");
 }
 
+function isPresenceOnline(connected, lastSeen) {
+  if (!connected) return false;
+  if (typeof lastSeen !== "number") return false;
+  return nowMs() - lastSeen <= PLAYER_STALE_AFTER_MS;
+}
+
+function bothPlayersOffline(game) {
+  const hostOnline = isPresenceOnline(game.hostConnected, game.hostLastSeen);
+  const guestExists = !!game.guest;
+  const guestOnline = guestExists
+    ? isPresenceOnline(game.guestConnected, game.guestLastSeen)
+    : false;
+
+  if (!guestExists) {
+    return !hostOnline;
+  }
+
+  return !hostOnline && !guestOnline;
+}
+
+function roomShouldBeDeleted(game) {
+  const updatedAt = typeof game.updatedAt === "number" ? game.updatedAt : 0;
+  const ageSinceUpdate = nowMs() - updatedAt;
+
+  if (game.status === "finished" && ageSinceUpdate > FINISHED_ROOM_RETENTION_MS) {
+    return true;
+  }
+
+  if (bothPlayersOffline(game) && ageSinceUpdate > ROOM_DELETE_AFTER_EMPTY_MS) {
+    return true;
+  }
+
+  return false;
+}
+
+async function cleanupExpiredRooms() {
+  try {
+    const snapshot = await getDocs(collection(db, "games"));
+
+    for (const roomDoc of snapshot.docs) {
+      const game = roomDoc.data();
+
+      if (roomShouldBeDeleted(game)) {
+        await deleteDoc(roomDoc.ref);
+      }
+    }
+  } catch (error) {
+    console.error("Fehler beim Aufräumen alter Rooms:", error);
+  }
+}
+
 async function roomExists(roomCode) {
   const roomRef = doc(db, "games", roomCode);
   const snapshot = await getDoc(roomRef);
@@ -141,6 +206,8 @@ async function createRoom(roomCode) {
     throw new Error("Dieser Room-Code ist bereits belegt.");
   }
 
+  const timestamp = nowMs();
+
   await setDoc(roomRef, {
     roomCode,
     status: "waiting",
@@ -149,20 +216,28 @@ async function createRoom(roomCode) {
       symbol: "X"
     },
     guest: null,
+
+    hostConnected: false,
+    hostLastSeen: null,
+    guestConnected: false,
+    guestLastSeen: null,
+
     currentPlayer: "X",
     nextBoardIndex: null,
     cellStates: createEmptyCellStates(),
     miniBoardWinners: createEmptyMiniWinners(),
     winner: "",
-    createdAt: Date.now()
+
+    createdAt: timestamp,
+    updatedAt: timestamp
   });
 }
 
 if (generateCodeBtn && generatedCodeEl && createHint) {
+  cleanupExpiredRooms();
+
   generateCodeBtn.addEventListener("click", async () => {
-    if (isCreatingRoom) {
-      return;
-    }
+    if (isCreatingRoom) return;
 
     isCreatingRoom = true;
     generateCodeBtn.disabled = true;
@@ -187,10 +262,10 @@ if (generateCodeBtn && generatedCodeEl && createHint) {
 }
 
 if (joinRoomBtn && roomInput && joinHint) {
+  cleanupExpiredRooms();
+
   joinRoomBtn.addEventListener("click", async () => {
-    if (isJoiningRoom) {
-      return;
-    }
+    if (isJoiningRoom) return;
 
     const roomCode = roomInput.value.trim().toUpperCase();
 
@@ -216,6 +291,14 @@ if (joinRoomBtn && roomInput && joinHint) {
 
       const game = snap.data();
 
+      if (roomShouldBeDeleted(game)) {
+        await deleteDoc(gameRef);
+        joinHint.textContent = "Dieser Room ist abgelaufen.";
+        joinRoomBtn.disabled = false;
+        isJoiningRoom = false;
+        return;
+      }
+
       if (game.guest) {
         joinHint.textContent = "Room ist bereits voll.";
         joinRoomBtn.disabled = false;
@@ -228,7 +311,10 @@ if (joinRoomBtn && roomInput && joinHint) {
           name: "Player 2",
           symbol: "O"
         },
-        status: "playing"
+        guestConnected: false,
+        guestLastSeen: null,
+        status: "playing",
+        updatedAt: nowMs()
       });
 
       window.location.href = `game.html?room=${roomCode}&mode=private-guest`;
@@ -249,7 +335,8 @@ if (
   resetBtn &&
   modeTextEl &&
   roomCodeTextEl &&
-  playerRoleTextEl
+  playerRoleTextEl &&
+  opponentStatusTextEl
 ) {
   let currentPlayer = "X";
   let nextBoardIndex = null;
@@ -263,6 +350,14 @@ if (
   let playerSymbol = "X";
   let isRealtimeGame = Boolean(roomCode);
   let currentGameStatus = "waiting";
+  let opponentOnline = false;
+  let roomRef = roomCode ? doc(db, "games", roomCode) : null;
+  let heartbeatInterval = null;
+  let isLeavingRoom = false;
+
+  function getRolePrefix() {
+    return playerSymbol === "X" ? "host" : "guest";
+  }
 
   function setModeDisplay() {
     if (mode === "private-host") {
@@ -281,10 +376,11 @@ if (
 
     playerRoleTextEl.textContent = playerSymbol;
     roomCodeTextEl.textContent = roomCode ? roomCode : "-";
+    opponentStatusTextEl.textContent = isRealtimeGame ? "Wird geprüft..." : "Nicht relevant";
 
     if (gameSubtitleEl) {
       gameSubtitleEl.textContent = roomCode
-        ? `Verbunden mit Room ${roomCode}. Änderungen werden live synchronisiert.`
+        ? `Verbunden mit Room ${roomCode}. Der Room erkennt jetzt auch, ob Spieler offline gehen.`
         : "Lokales Spiel ohne Realtime-Room.";
     }
   }
@@ -321,6 +417,7 @@ if (
     if (isRealtimeGame) {
       if (currentGameStatus !== "playing") return false;
       if (currentPlayer !== playerSymbol) return false;
+      if (!opponentOnline) return false;
     }
 
     if (nextBoardIndex === null) return true;
@@ -396,16 +493,16 @@ if (
 
     const nextState = buildNextState(boardIndex, cellIndex);
 
-    if (isRealtimeGame && roomCode) {
+    if (isRealtimeGame && roomRef) {
       try {
-        const gameRef = doc(db, "games", roomCode);
-        await updateDoc(gameRef, {
+        await updateDoc(roomRef, {
           cellStates: nextState.cellStates,
           miniBoardWinners: nextState.miniBoardWinners,
           currentPlayer: nextState.currentPlayer,
           nextBoardIndex: nextState.nextBoardIndex,
           winner: nextState.winner,
-          status: nextState.status
+          status: nextState.status,
+          updatedAt: nowMs()
         });
       } catch (error) {
         console.error(error);
@@ -479,12 +576,48 @@ if (
     targetBoardEl.textContent = nextBoardIndex === null ? "Beliebig" : boardName(nextBoardIndex);
   }
 
+  function updateOpponentStatus(game) {
+    const hostOnline = isPresenceOnline(game.hostConnected, game.hostLastSeen);
+    const guestExists = !!game.guest;
+    const guestOnline = guestExists
+      ? isPresenceOnline(game.guestConnected, game.guestLastSeen)
+      : false;
+
+    if (playerSymbol === "X") {
+      if (!guestExists) {
+        opponentOnline = false;
+        opponentStatusTextEl.textContent = "Noch nicht beigetreten";
+        return;
+      }
+
+      if (guestOnline) {
+        opponentOnline = true;
+        opponentStatusTextEl.textContent = "Online";
+      } else {
+        opponentOnline = false;
+        opponentStatusTextEl.textContent = "Offline / getrennt";
+      }
+
+      return;
+    }
+
+    if (hostOnline) {
+      opponentOnline = true;
+      opponentStatusTextEl.textContent = "Online";
+    } else {
+      opponentOnline = false;
+      opponentStatusTextEl.textContent = "Offline / getrennt";
+    }
+  }
+
   function applySnapshot(game) {
     currentPlayer = game.currentPlayer ?? "X";
     nextBoardIndex = game.nextBoardIndex ?? null;
     cellStates = Array.isArray(game.cellStates) ? game.cellStates : createEmptyCellStates();
     miniBoardWinners = Array.isArray(game.miniBoardWinners) ? game.miniBoardWinners : createEmptyMiniWinners();
     currentGameStatus = game.status ?? "waiting";
+
+    updateOpponentStatus(game);
 
     if (game.winner === "X" || game.winner === "O") {
       gameOver = true;
@@ -497,6 +630,8 @@ if (
 
       if (currentGameStatus === "waiting") {
         statusTextEl.textContent = "Warte auf zweiten Spieler...";
+      } else if (!opponentOnline) {
+        statusTextEl.textContent = "Der andere Spieler ist aktuell nicht verbunden.";
       } else if (currentGameStatus === "playing") {
         statusTextEl.textContent =
           currentPlayer === playerSymbol
@@ -510,17 +645,99 @@ if (
     render();
   }
 
+  async function updateOwnPresence(isConnected) {
+    if (!isRealtimeGame || !roomRef) return;
+
+    const rolePrefix = getRolePrefix();
+    const payload = {
+      [`${rolePrefix}Connected`]: isConnected,
+      [`${rolePrefix}LastSeen`]: nowMs(),
+      updatedAt: nowMs()
+    };
+
+    try {
+      await updateDoc(roomRef, payload);
+    } catch (error) {
+      console.error("Fehler beim Presence-Update:", error);
+    }
+  }
+
+  function startHeartbeat() {
+    if (!isRealtimeGame) return;
+
+    heartbeatInterval = window.setInterval(() => {
+      updateOwnPresence(true);
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatInterval) {
+      window.clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+  }
+
+  async function maybeDeleteRoomIfEmpty() {
+    if (!roomRef) return;
+
+    try {
+      const snapshot = await getDoc(roomRef);
+
+      if (!snapshot.exists()) return;
+
+      const game = snapshot.data();
+
+      if (bothPlayersOffline(game)) {
+        await deleteDoc(roomRef);
+      }
+    } catch (error) {
+      console.error("Fehler beim Prüfen/Löschen eines leeren Rooms:", error);
+    }
+  }
+
+  async function leaveRoomAndExit() {
+    if (!isRealtimeGame || !roomRef || isLeavingRoom) {
+      window.location.href = "lobby.html";
+      return;
+    }
+
+    isLeavingRoom = true;
+    stopHeartbeat();
+
+    try {
+      await updateOwnPresence(false);
+      await maybeDeleteRoomIfEmpty();
+    } catch (error) {
+      console.error("Fehler beim Verlassen des Rooms:", error);
+    }
+
+    window.location.href = "lobby.html";
+  }
+
+  async function handleBestEffortLeave() {
+    if (!isRealtimeGame || !roomRef || isLeavingRoom) return;
+
+    stopHeartbeat();
+
+    try {
+      await updateOwnPresence(false);
+      await maybeDeleteRoomIfEmpty();
+    } catch (error) {
+      console.error("Best-effort leave fehlgeschlagen:", error);
+    }
+  }
+
   async function resetGame() {
-    if (isRealtimeGame && roomCode) {
+    if (isRealtimeGame && roomRef) {
       try {
-        const gameRef = doc(db, "games", roomCode);
-        await updateDoc(gameRef, {
+        await updateDoc(roomRef, {
           status: "playing",
           currentPlayer: "X",
           nextBoardIndex: null,
           cellStates: createEmptyCellStates(),
           miniBoardWinners: createEmptyMiniWinners(),
-          winner: ""
+          winner: "",
+          updatedAt: nowMs()
         });
       } catch (error) {
         console.error(error);
@@ -539,37 +756,42 @@ if (
   }
 
   function setupRealtimeRoom() {
-    if (!roomCode) return;
+    if (!roomRef) return;
 
-    const gameRef = doc(db, "games", roomCode);
+    updateOwnPresence(true);
+    startHeartbeat();
 
-    onSnapshot(gameRef, async (snapshot) => {
+    onSnapshot(roomRef, async (snapshot) => {
       if (!snapshot.exists()) {
-        statusTextEl.textContent = "Room wurde nicht gefunden.";
+        statusTextEl.textContent = "Room wurde gelöscht oder nicht gefunden.";
+        opponentStatusTextEl.textContent = "-";
         return;
       }
 
       const game = snapshot.data();
 
-      if (mode === "private-host" && game.status === "waiting" && !game.guest) {
-        statusTextEl.textContent = "Warte auf zweiten Spieler...";
-      }
-
-      if (mode === "private-host" && game.status === "waiting" && game.guest) {
+      if (roomShouldBeDeleted(game)) {
         try {
-          await updateDoc(gameRef, {
-            status: "playing"
-          });
+          await deleteDoc(roomRef);
+          statusTextEl.textContent = "Room war inaktiv und wurde gelöscht.";
         } catch (error) {
-          console.error(error);
+          console.error("Fehler beim Löschen eines inaktiven Rooms:", error);
         }
+        return;
       }
 
       applySnapshot(game);
     });
+
+    window.addEventListener("pagehide", handleBestEffortLeave);
+    window.addEventListener("beforeunload", handleBestEffortLeave);
   }
 
   resetBtn.addEventListener("click", resetGame);
+
+  if (leaveRoomBtn) {
+    leaveRoomBtn.addEventListener("click", leaveRoomAndExit);
+  }
 
   setModeDisplay();
   createBoard();
