@@ -18,6 +18,11 @@ const joinRoomBtn = document.getElementById("joinRoomBtn");
 const roomInput = document.getElementById("roomInput");
 const joinHint = document.getElementById("joinHint");
 
+const queueStatusTextEl = document.getElementById("queueStatusText");
+const queueDetailTextEl = document.getElementById("queueDetailText");
+const queueHintEl = document.getElementById("queueHint");
+const cancelQueueBtn = document.getElementById("cancelQueueBtn");
+
 const ultimateBoard = document.getElementById("ultimateBoard");
 const currentPlayerEl = document.getElementById("currentPlayer");
 const targetBoardEl = document.getElementById("targetBoard");
@@ -52,6 +57,10 @@ const HEARTBEAT_INTERVAL_MS = 5000;
 const PLAYER_STALE_AFTER_MS = 15000;
 const ROOM_DELETE_AFTER_EMPTY_MS = 25000;
 const FINISHED_ROOM_RETENTION_MS = 5 * 60 * 1000;
+
+const MATCHMAKING_DOC_PREFIX = "queue-";
+const MATCHMAKING_WAITING_TIMEOUT_MS = 45000;
+const MATCHMAKING_CHECK_INTERVAL_MS = 2500;
 
 let isCreatingRoom = false;
 let isJoiningRoom = false;
@@ -154,6 +163,15 @@ function readJoinCodeFromLobbyUrl() {
   return params.get("join");
 }
 
+function readQueueId() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("queue");
+}
+
+function buildQuickMatchUrl(queueId) {
+  return `quickmatch.html?queue=${encodeURIComponent(queueId)}`;
+}
+
 function isPresenceOnline(connected, lastSeen) {
   if (!connected) return false;
   if (typeof lastSeen !== "number") return false;
@@ -189,6 +207,12 @@ function roomShouldBeDeleted(game) {
   return false;
 }
 
+function queueShouldBeDeleted(queueEntry) {
+  if (!queueEntry) return false;
+  const updatedAt = typeof queueEntry.updatedAt === "number" ? queueEntry.updatedAt : 0;
+  return nowMs() - updatedAt > MATCHMAKING_WAITING_TIMEOUT_MS;
+}
+
 async function cleanupExpiredRooms() {
   try {
     const snapshot = await getDocs(collection(db, "games"));
@@ -202,6 +226,21 @@ async function cleanupExpiredRooms() {
     }
   } catch (error) {
     console.error("Fehler beim Aufräumen alter Rooms:", error);
+  }
+}
+
+async function cleanupExpiredQueue() {
+  try {
+    const snapshot = await getDocs(collection(db, "matchmakingQueue"));
+
+    for (const queueDoc of snapshot.docs) {
+      const entry = queueDoc.data();
+      if (queueShouldBeDeleted(entry)) {
+        await deleteDoc(queueDoc.ref);
+      }
+    }
+  } catch (error) {
+    console.error("Fehler beim Aufräumen der Matchmaking-Queue:", error);
   }
 }
 
@@ -224,12 +263,14 @@ async function generateUniqueRoomCode() {
   throw new Error("Es konnte kein freier Room-Code erzeugt werden. Bitte versuche es erneut.");
 }
 
-function buildHostGameUrl(roomCode, hostToken) {
-  return `game.html?room=${encodeURIComponent(roomCode)}&mode=private-host&auth=${encodeURIComponent(hostToken)}`;
+function buildHostGameUrl(roomCode, hostToken, isRandom = false) {
+  const mode = isRandom ? "random-host" : "private-host";
+  return `game.html?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(mode)}&auth=${encodeURIComponent(hostToken)}`;
 }
 
-function buildGuestGameUrl(roomCode, joinToken) {
-  return `game.html?room=${encodeURIComponent(roomCode)}&mode=private-guest&auth=${encodeURIComponent(joinToken)}`;
+function buildGuestGameUrl(roomCode, joinToken, isRandom = false) {
+  const mode = isRandom ? "random-guest" : "private-guest";
+  return `game.html?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(mode)}&auth=${encodeURIComponent(joinToken)}`;
 }
 
 function buildJoinLink(roomCode, joinToken) {
@@ -306,7 +347,7 @@ if (generateCodeBtn && generatedCodeEl && createHint) {
       const { hostToken } = await createRoom(roomCode);
 
       createHint.textContent = `Room ${roomCode} erstellt. Weiterleitung als Host...`;
-      window.location.href = buildHostGameUrl(roomCode, hostToken);
+      window.location.href = buildHostGameUrl(roomCode, hostToken, false);
     } catch (error) {
       console.error("Fehler beim Erstellen des Rooms:", error);
       createHint.textContent = `Fehler beim Erstellen des Rooms: ${error.message}`;
@@ -379,7 +420,7 @@ if (joinRoomBtn && roomInput && joinHint) {
         updatedAt: nowMs()
       });
 
-      window.location.href = buildGuestGameUrl(roomCode, game.joinToken);
+      window.location.href = buildGuestGameUrl(roomCode, game.joinToken, false);
     } catch (error) {
       console.error("Fehler beim Joinen des Rooms:", error);
       joinHint.textContent = `Fehler beim Joinen des Rooms: ${error.message}`;
@@ -388,6 +429,203 @@ if (joinRoomBtn && roomInput && joinHint) {
     }
   });
 }
+
+/* =========================
+   QUICK MATCH / RANDOM MODE
+   ========================= */
+
+if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
+  let queueId = readQueueId();
+  if (!queueId) {
+    queueId = `${MATCHMAKING_DOC_PREFIX}${randomToken()}`;
+    history.replaceState({}, "", buildQuickMatchUrl(queueId));
+  }
+
+  const queueRef = doc(db, "matchmakingQueue", queueId);
+  let queueWatcherActive = true;
+  let matchmakingInterval = null;
+  let redirecting = false;
+
+  cleanupExpiredRooms();
+  cleanupExpiredQueue();
+
+  async function ensureQueueEntry() {
+    const snapshot = await getDoc(queueRef);
+
+    if (!snapshot.exists()) {
+      await setDoc(queueRef, {
+        queueId,
+        status: "waiting",
+        createdAt: nowMs(),
+        updatedAt: nowMs(),
+        roomCode: null,
+        authToken: null,
+        role: null
+      });
+    } else {
+      const data = snapshot.data();
+      if (data.status !== "matched") {
+        await updateDoc(queueRef, {
+          status: "waiting",
+          updatedAt: nowMs()
+        });
+      }
+    }
+  }
+
+  async function tryMatchOpponent() {
+    if (redirecting) return;
+
+    const ownSnap = await getDoc(queueRef);
+    if (!ownSnap.exists()) return;
+
+    const ownEntry = ownSnap.data();
+    if (ownEntry.status !== "waiting") return;
+
+    const allQueuesSnap = await getDocs(collection(db, "matchmakingQueue"));
+    const waitingEntries = [];
+
+    allQueuesSnap.forEach((docSnap) => {
+      const data = docSnap.data();
+      if (
+        docSnap.id !== queueId &&
+        data.status === "waiting" &&
+        !queueShouldBeDeleted(data)
+      ) {
+        waitingEntries.push({ id: docSnap.id, ...data });
+      }
+    });
+
+    waitingEntries.sort((a, b) => a.createdAt - b.createdAt);
+
+    const opponent = waitingEntries[0];
+    if (!opponent) return;
+
+    const latestOpponentSnap = await getDoc(doc(db, "matchmakingQueue", opponent.id));
+    if (!latestOpponentSnap.exists()) return;
+
+    const latestOpponent = latestOpponentSnap.data();
+    if (latestOpponent.status !== "waiting") return;
+
+    const roomCode = await generateUniqueRoomCode();
+    const { hostToken, joinToken } = await createRoom(roomCode);
+
+    await updateDoc(doc(db, "games", roomCode), {
+      status: "playing",
+      guest: {
+        name: "Player 2",
+        symbol: "O"
+      },
+      updatedAt: nowMs()
+    });
+
+    await updateDoc(queueRef, {
+      status: "matched",
+      roomCode,
+      authToken: hostToken,
+      role: "host",
+      updatedAt: nowMs()
+    });
+
+    await updateDoc(doc(db, "matchmakingQueue", opponent.id), {
+      status: "matched",
+      roomCode,
+      authToken: joinToken,
+      role: "guest",
+      updatedAt: nowMs()
+    });
+  }
+
+  async function heartbeatQueue() {
+    try {
+      const snap = await getDoc(queueRef);
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+      if (data.status === "waiting") {
+        await updateDoc(queueRef, {
+          updatedAt: nowMs()
+        });
+      }
+    } catch (error) {
+      console.error("Queue-Heartbeat fehlgeschlagen:", error);
+    }
+  }
+
+  async function removeQueueEntry() {
+    try {
+      await deleteDoc(queueRef);
+    } catch (error) {
+      console.error("Queue-Löschen fehlgeschlagen:", error);
+    }
+  }
+
+  cancelQueueBtn.addEventListener("click", async () => {
+    queueWatcherActive = false;
+    if (matchmakingInterval) {
+      clearInterval(matchmakingInterval);
+    }
+    await removeQueueEntry();
+    window.location.href = "play.html";
+  });
+
+  window.addEventListener("beforeunload", async () => {
+    if (!redirecting) {
+      await removeQueueEntry();
+    }
+  });
+
+  ensureQueueEntry().then(() => {
+    queueStatusTextEl.textContent = "Suche läuft";
+    queueHintEl.textContent = "Warte auf einen zufälligen Gegner...";
+
+    onSnapshot(queueRef, async (snapshot) => {
+      if (!queueWatcherActive || redirecting) return;
+
+      if (!snapshot.exists()) {
+        queueStatusTextEl.textContent = "Queue beendet";
+        queueHintEl.textContent = "Die Suche wurde beendet.";
+        return;
+      }
+
+      const data = snapshot.data();
+
+      if (data.status === "waiting") {
+        queueStatusTextEl.textContent = "Suche läuft";
+        queueDetailTextEl.textContent = "Sobald ein anderer Spieler sucht, wird automatisch ein Match erstellt.";
+        queueHintEl.textContent = "Noch kein Gegner gefunden.";
+      }
+
+      if (data.status === "matched" && data.roomCode && data.authToken && data.role) {
+        redirecting = true;
+        queueStatusTextEl.textContent = "Match gefunden!";
+        queueHintEl.textContent = "Weiterleitung ins Spiel...";
+
+        if (matchmakingInterval) {
+          clearInterval(matchmakingInterval);
+        }
+
+        await removeQueueEntry();
+
+        const isHost = data.role === "host";
+        window.location.href = isHost
+          ? buildHostGameUrl(data.roomCode, data.authToken, true)
+          : buildGuestGameUrl(data.roomCode, data.authToken, true);
+      }
+    });
+
+    matchmakingInterval = setInterval(async () => {
+      await heartbeatQueue();
+      await tryMatchOpponent();
+    }, MATCHMAKING_CHECK_INTERVAL_MS);
+
+    tryMatchOpponent();
+  });
+}
+
+/* =========================
+   GAME LOGIC
+   ========================= */
 
 if (
   ultimateBoard &&
@@ -412,6 +650,9 @@ if (
   let mode = readGameMode();
   let playerSymbol = "X";
   const isRealtimeGame = Boolean(roomCode);
+  const isBotMode = mode === "bot-easy" || mode === "bot-medium" || mode === "bot-hard";
+  const botDifficulty = isBotMode ? mode.replace("bot-", "") : null;
+
   let currentGameStatus = "waiting";
   let opponentOnline = false;
   const roomRef = roomCode ? doc(db, "games", roomCode) : null;
@@ -420,6 +661,7 @@ if (
   let globalWinningLine = null;
   let globalWinner = "";
   let roomJoinToken = null;
+  let botThinking = false;
 
   function getRolePrefix() {
     return playerSymbol === "X" ? "host" : "guest";
@@ -432,22 +674,61 @@ if (
     } else if (mode === "private-guest") {
       modeTextEl.textContent = "Private Guest";
       playerSymbol = "O";
+    } else if (mode === "random-host") {
+      modeTextEl.textContent = "Random Match";
+      playerSymbol = "X";
+    } else if (mode === "random-guest") {
+      modeTextEl.textContent = "Random Match";
+      playerSymbol = "O";
     } else if (mode === "local") {
       modeTextEl.textContent = "Local";
       playerSymbol = "X";
+    } else if (mode === "bot-easy") {
+      modeTextEl.textContent = "Bot Easy";
+      playerSymbol = "X";
+    } else if (mode === "bot-medium") {
+      modeTextEl.textContent = "Bot Medium";
+      playerSymbol = "X";
+    } else if (mode === "bot-hard") {
+      modeTextEl.textContent = "Bot Hard";
+      playerSymbol = "X";
     } else {
-      modeTextEl.textContent = isRealtimeGame ? "Private Match" : "Standard";
+      modeTextEl.textContent = isRealtimeGame ? "Online Match" : "Standard";
       playerSymbol = "X";
     }
 
     playerRoleTextEl.textContent = playerSymbol;
     roomCodeTextEl.textContent = roomCode ? roomCode : "-";
-    opponentStatusTextEl.textContent = isRealtimeGame ? "Wird geprüft..." : "Nicht relevant";
+
+    if (isBotMode) {
+      opponentOnline = true;
+      opponentStatusTextEl.textContent = `Bot (${botDifficulty})`;
+    } else {
+      opponentStatusTextEl.textContent = isRealtimeGame ? "Wird geprüft..." : "Nicht relevant";
+    }
 
     if (gameSubtitleEl) {
-      gameSubtitleEl.textContent = roomCode
-        ? `Verbunden mit Room ${roomCode}. Rollen werden jetzt eindeutig per Token erkannt.`
-        : "Lokales Spiel ohne Realtime-Room.";
+      if (mode === "random-host" || mode === "random-guest") {
+        gameSubtitleEl.textContent = `Random Match gegen einen zufälligen Online-Gegner.`;
+      } else if (isBotMode) {
+        gameSubtitleEl.textContent = `Offline gegen Bot (${botDifficulty}).`;
+      } else if (roomCode) {
+        gameSubtitleEl.textContent = `Verbunden mit Room ${roomCode}.`;
+      } else {
+        gameSubtitleEl.textContent = "Lokales Spiel ohne Realtime-Room.";
+      }
+    }
+
+    if (copyJoinLinkBtn) {
+      copyJoinLinkBtn.style.display = roomCode && !mode?.startsWith("random-") ? "inline-flex" : "none";
+    }
+
+    if (copyRoomCodeBtn) {
+      copyRoomCodeBtn.style.display = roomCode ? "inline-flex" : "none";
+    }
+
+    if (leaveRoomBtn) {
+      leaveRoomBtn.style.display = roomCode ? "inline-flex" : "none";
     }
   }
 
@@ -475,26 +756,30 @@ if (
     render();
   }
 
-  function isMoveAllowed(boardIndex, cellIndex) {
-    if (getCellValue(cellStates, boardIndex, cellIndex) !== "") return false;
-    if (miniBoardWinners[boardIndex] !== "") return false;
-    if (gameOver) return false;
+  function getAllValidMovesForState(stateCellStates, stateMiniBoardWinners, stateNextBoardIndex) {
+    const moves = [];
 
-    if (isRealtimeGame) {
-      if (currentGameStatus !== "playing") return false;
-      if (currentPlayer !== playerSymbol) return false;
-      if (!opponentOnline) return false;
+    for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
+      if (stateMiniBoardWinners[boardIndex] !== "") continue;
+
+      const boardAllowed = stateNextBoardIndex === null || stateNextBoardIndex === boardIndex;
+      if (!boardAllowed) continue;
+
+      for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
+        if (getCellValue(stateCellStates, boardIndex, cellIndex) === "") {
+          moves.push({ boardIndex, cellIndex });
+        }
+      }
     }
 
-    if (nextBoardIndex === null) return true;
-    return boardIndex === nextBoardIndex;
+    return moves;
   }
 
-  function buildNextState(boardIndex, cellIndex) {
-    const newCellStates = [...cellStates];
-    const newMiniBoardWinners = [...miniBoardWinners];
+  function buildNextStateFrom(player, stateCellStates, stateMiniBoardWinners, stateNextBoardIndex, boardIndex, cellIndex) {
+    const newCellStates = [...stateCellStates];
+    const newMiniBoardWinners = [...stateMiniBoardWinners];
 
-    setCellValue(newCellStates, boardIndex, cellIndex, currentPlayer);
+    setCellValue(newCellStates, boardIndex, cellIndex, player);
 
     const miniBoard = getMiniBoard(newCellStates, boardIndex);
     const miniWinner = getWinner(miniBoard);
@@ -517,7 +802,7 @@ if (
     let newStatus = "playing";
     let newWinner = "";
     let newNextBoardIndex = cellIndex;
-    let newCurrentPlayer = currentPlayer === "X" ? "O" : "X";
+    let newCurrentPlayer = player === "X" ? "O" : "X";
 
     if (foundGlobalWinner) {
       newGameOver = true;
@@ -525,14 +810,14 @@ if (
       newStatus = "finished";
       newStatusText = `Spieler ${foundGlobalWinner} gewinnt das Spiel!`;
       newNextBoardIndex = null;
-      newCurrentPlayer = currentPlayer;
+      newCurrentPlayer = player;
     } else if (newMiniBoardWinners.every((value) => value !== "")) {
       newGameOver = true;
       newWinner = "draw";
       newStatus = "finished";
       newStatusText = "Unentschieden!";
       newNextBoardIndex = null;
-      newCurrentPlayer = currentPlayer;
+      newCurrentPlayer = player;
     } else {
       if (newMiniBoardWinners[newNextBoardIndex] !== "") {
         newNextBoardIndex = null;
@@ -550,6 +835,180 @@ if (
       gameOver: newGameOver,
       globalWinningLine: foundWinningLine
     };
+  }
+
+  function buildNextState(boardIndex, cellIndex) {
+    return buildNextStateFrom(
+      currentPlayer,
+      cellStates,
+      miniBoardWinners,
+      nextBoardIndex,
+      boardIndex,
+      cellIndex
+    );
+  }
+
+  function evaluateBoardForBot(stateCellStates, stateMiniBoardWinners) {
+    let score = 0;
+    const normalizedGlobalBoard = stateMiniBoardWinners.map((value) => (value === "draw" ? "" : value));
+    const globalWinnerFound = getWinner(normalizedGlobalBoard);
+
+    if (globalWinnerFound === "O") score += 100000;
+    if (globalWinnerFound === "X") score -= 100000;
+
+    stateMiniBoardWinners.forEach((winner, index) => {
+      const centerBonus = index === 4 ? 18 : [0, 2, 6, 8].includes(index) ? 10 : 6;
+      if (winner === "O") score += 60 + centerBonus;
+      if (winner === "X") score -= 60 + centerBonus;
+    });
+
+    WINNING_COMBINATIONS.forEach(([a, b, c]) => {
+      const line = [normalizedGlobalBoard[a], normalizedGlobalBoard[b], normalizedGlobalBoard[c]];
+      const oCount = line.filter((v) => v === "O").length;
+      const xCount = line.filter((v) => v === "X").length;
+      const emptyCount = line.filter((v) => v === "").length;
+
+      if (oCount === 2 && emptyCount === 1) score += 140;
+      if (xCount === 2 && emptyCount === 1) score -= 150;
+      if (oCount === 1 && emptyCount === 2) score += 18;
+      if (xCount === 1 && emptyCount === 2) score -= 18;
+    });
+
+    for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
+      if (stateMiniBoardWinners[boardIndex] !== "") continue;
+      const mini = getMiniBoard(stateCellStates, boardIndex);
+
+      WINNING_COMBINATIONS.forEach(([a, b, c]) => {
+        const line = [mini[a], mini[b], mini[c]];
+        const oCount = line.filter((v) => v === "O").length;
+        const xCount = line.filter((v) => v === "X").length;
+        const emptyCount = line.filter((v) => v === "").length;
+
+        if (oCount === 2 && emptyCount === 1) score += 22;
+        if (xCount === 2 && emptyCount === 1) score -= 24;
+        if (oCount === 1 && emptyCount === 2) score += 4;
+        if (xCount === 1 && emptyCount === 2) score -= 4;
+      });
+
+      if (mini[4] === "O") score += 5;
+      if (mini[4] === "X") score -= 5;
+    }
+
+    return score;
+  }
+
+  function chooseBotMove() {
+    const validMoves = getAllValidMovesForState(cellStates, miniBoardWinners, nextBoardIndex);
+    if (validMoves.length === 0) return null;
+
+    if (botDifficulty === "easy") {
+      return validMoves[Math.floor(Math.random() * validMoves.length)];
+    }
+
+    let bestMove = null;
+    let bestScore = -Infinity;
+
+    for (const move of validMoves) {
+      const botState = buildNextStateFrom(
+        "O",
+        cellStates,
+        miniBoardWinners,
+        nextBoardIndex,
+        move.boardIndex,
+        move.cellIndex
+      );
+
+      let score = evaluateBoardForBot(botState.cellStates, botState.miniBoardWinners);
+
+      if (botState.winner === "O") {
+        score += 500000;
+      }
+
+      const centerBoardBonus = move.boardIndex === 4 ? 14 : [0, 2, 6, 8].includes(move.boardIndex) ? 8 : 4;
+      const centerCellBonus = move.cellIndex === 4 ? 12 : [0, 2, 6, 8].includes(move.cellIndex) ? 6 : 3;
+      score += centerBoardBonus + centerCellBonus;
+
+      if (botDifficulty === "hard" && !botState.gameOver) {
+        const opponentMoves = getAllValidMovesForState(
+          botState.cellStates,
+          botState.miniBoardWinners,
+          botState.nextBoardIndex
+        );
+
+        let opponentBestScore = -Infinity;
+
+        for (const oppMove of opponentMoves) {
+          const oppState = buildNextStateFrom(
+            "X",
+            botState.cellStates,
+            botState.miniBoardWinners,
+            botState.nextBoardIndex,
+            oppMove.boardIndex,
+            oppMove.cellIndex
+          );
+
+          let oppScore = -evaluateBoardForBot(oppState.cellStates, oppState.miniBoardWinners);
+
+          if (oppState.winner === "X") {
+            oppScore += 400000;
+          }
+
+          if (oppScore > opponentBestScore) {
+            opponentBestScore = oppScore;
+          }
+        }
+
+        if (opponentBestScore !== -Infinity) {
+          score -= opponentBestScore * 0.8;
+        }
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      }
+    }
+
+    return bestMove ?? validMoves[0];
+  }
+
+  function maybeTriggerBotMove() {
+    if (!isBotMode) return;
+    if (gameOver) return;
+    if (currentPlayer !== "O") return;
+    if (botThinking) return;
+
+    botThinking = true;
+    statusTextEl.textContent = `Bot (${botDifficulty}) denkt...`;
+
+    window.setTimeout(() => {
+      const move = chooseBotMove();
+      if (!move) {
+        botThinking = false;
+        return;
+      }
+
+      const nextState = buildNextStateFrom(
+        "O",
+        cellStates,
+        miniBoardWinners,
+        nextBoardIndex,
+        move.boardIndex,
+        move.cellIndex
+      );
+
+      cellStates = nextState.cellStates;
+      miniBoardWinners = nextState.miniBoardWinners;
+      currentPlayer = nextState.currentPlayer;
+      nextBoardIndex = nextState.nextBoardIndex;
+      gameOver = nextState.gameOver;
+      statusTextEl.textContent = nextState.statusText;
+      globalWinner = nextState.winner;
+      globalWinningLine = nextState.globalWinningLine;
+
+      botThinking = false;
+      render();
+    }, botDifficulty === "easy" ? 350 : botDifficulty === "medium" ? 500 : 650);
   }
 
   function getLineCoordinates(line) {
@@ -592,12 +1051,29 @@ if (
       return null;
     }
 
-    if (!isRealtimeGame) {
+    if (!isRealtimeGame && !isBotMode) {
       return {
         variant: "win",
         title: `Spieler ${globalWinner} gewinnt!`,
         subtitle: "Das Spiel ist entschieden."
       };
+    }
+
+    if (isBotMode) {
+      if (globalWinner === "X") {
+        return {
+          variant: "win",
+          title: "Du gewinnst!",
+          subtitle: `Du hast Bot (${botDifficulty}) besiegt.`
+        };
+      }
+      if (globalWinner === "O") {
+        return {
+          variant: "loss",
+          title: "Du verlierst!",
+          subtitle: `Bot (${botDifficulty}) hat gewonnen.`
+        };
+      }
     }
 
     if (globalWinner === playerSymbol) {
@@ -686,6 +1162,7 @@ if (
     globalWinningLine = nextState.globalWinningLine;
 
     render();
+    maybeTriggerBotMove();
   }
 
   function render() {
@@ -870,7 +1347,7 @@ if (
 
   async function leaveRoomAndExit() {
     if (!isRealtimeGame || !roomRef || isLeavingRoom) {
-      window.location.href = "lobby.html";
+      window.location.href = "play.html";
       return;
     }
 
@@ -884,7 +1361,7 @@ if (
       console.error("Fehler beim Verlassen des Rooms:", error);
     }
 
-    window.location.href = "lobby.html";
+    window.location.href = "play.html";
   }
 
   async function handleBestEffortLeave() {
@@ -951,8 +1428,12 @@ if (
       }
 
       if (authToken === game.hostToken) {
-        mode = "private-host";
-        playerSymbol = "X";
+        if (mode === "random-host") {
+          playerSymbol = "X";
+        } else {
+          mode = mode === "random-host" ? "random-host" : "private-host";
+          playerSymbol = "X";
+        }
 
         await updateDoc(roomRef, {
           hostConnected: true,
@@ -964,8 +1445,12 @@ if (
       }
 
       if (authToken === game.joinToken) {
-        mode = "private-guest";
-        playerSymbol = "O";
+        if (mode === "random-guest") {
+          playerSymbol = "O";
+        } else {
+          mode = mode === "random-guest" ? "random-guest" : "private-guest";
+          playerSymbol = "O";
+        }
 
         const payload = {
           guestConnected: true,
@@ -1079,5 +1564,7 @@ if (
 
   if (isRealtimeGame) {
     setupRealtimeRoom();
+  } else if (isBotMode) {
+    maybeTriggerBotMove();
   }
 }

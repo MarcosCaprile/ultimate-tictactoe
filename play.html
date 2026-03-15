@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Play - Ultimate Tic Tac Toe</title>
+  <title>Ultimate Tic Tac Toe - Game</title>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="game-effects.css" />
 </head>
 <body>
   <div class="site-shell">
@@ -13,57 +14,73 @@
       <nav class="nav">
         <a href="index.html">Home</a>
         <a href="play.html">Play</a>
+        <a href="lobby.html">Lobby</a>
         <a href="game.html" class="nav-play-btn">Game</a>
       </nav>
     </header>
 
-    <main class="page-main">
-      <section class="page-hero compact">
-        <span class="section-kicker">Play hub</span>
-        <h1>Wie möchtest du spielen?</h1>
-        <p class="hero-text narrow">
-          Wähle den passenden Modus. Diese Version enthält einen lokalen Spielmodus und eine vorbereitete Lobby-Struktur für private Online-Matches.
-        </p>
+    <main class="game-layout">
+      <section class="game-headline">
+        <div>
+          <span class="section-kicker">Game board</span>
+          <h1>Ultimate Tic Tac Toe</h1>
+          <p class="subtitle" id="gameSubtitle">
+            Realtime-Spiel mit Random Match, privaten Rooms, Bot-Modi und Gewinnanimationen.
+          </p>
+        </div>
+
+        <div class="game-actions">
+          <a href="play.html" class="secondary-btn small-btn">Zurück zum Hub</a>
+          <button id="copyRoomCodeBtn" class="secondary-btn small-btn" type="button">Code kopieren</button>
+          <button id="copyJoinLinkBtn" class="secondary-btn small-btn" type="button">Join-Link kopieren</button>
+          <button id="leaveRoomBtn" class="secondary-btn small-btn" type="button">Room verlassen</button>
+          <button id="resetBtn" class="primary-btn small-btn button-reset" type="button">Neues Spiel</button>
+        </div>
       </section>
 
-      <section class="mode-grid">
-        <article class="mode-card featured">
-          <span class="mode-tag">Ready now</span>
-          <h2>Lokales Spiel</h2>
-          <p>Spiele direkt auf einem Gerät und teste die volle Ultimate-Tic-Tac-Toe-Logik im Browser.</p>
-          <ul class="mode-list">
-            <li>voll spielbares Board</li>
-            <li>Regeln bereits integriert</li>
-            <li>perfekt zum Testen</li>
-          </ul>
-          <a href="game.html?mode=local" class="primary-btn">Local Match starten</a>
-        </article>
+      <section class="info-panel">
+        <div class="info-card">
+          <span class="label">Modus</span>
+          <span id="modeText" class="value">Local</span>
+        </div>
 
-        <article class="mode-card">
-          <span class="mode-tag">Next step</span>
-          <h2>Privates Match</h2>
-          <p>Erstelle eine Lobby mit Room-Code. Die UI ist schon da und perfekt vorbereitet für spätere Online-Synchronisation.</p>
-          <ul class="mode-list">
-            <li>Room-Code anzeigen</li>
-            <li>Join per Code</li>
-            <li>ideale Basis für Multiplayer</li>
-          </ul>
-          <a href="lobby.html" class="secondary-btn">Zur Lobby</a>
-        </article>
+        <div class="info-card">
+          <span class="label">Dein Symbol</span>
+          <span id="playerRoleText" class="value">-</span>
+        </div>
 
-        <article class="mode-card disabled-card">
-          <span class="mode-tag">Later</span>
-          <h2>Ranked Matchmaking</h2>
-          <p>Automatische Gegnersuche, Rangliste und Matchmaking kommen später, wenn Realtime-Multiplayer eingebaut ist.</p>
-          <ul class="mode-list">
-            <li>globale Gegner</li>
-            <li>Leaderboard</li>
-            <li>Elo / Rating</li>
-          </ul>
-          <span class="disabled-pill">Coming later</span>
-        </article>
+        <div class="info-card">
+          <span class="label">Gegner Status</span>
+          <span id="opponentStatusText" class="value">-</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Aktueller Spieler</span>
+          <span id="currentPlayer" class="value">X</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Nächstes Feld</span>
+          <span id="targetBoard" class="value">Beliebig</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Status</span>
+          <span id="statusText" class="value">Spiel läuft</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Room</span>
+          <span id="roomCodeText" class="value">-</span>
+        </div>
+      </section>
+
+      <section class="game-board-section">
+        <div id="ultimateBoard" class="ultimate-board"></div>
       </section>
     </main>
   </div>
+
+  <script type="module" src="script.js"></script>
 </body>
 </html>

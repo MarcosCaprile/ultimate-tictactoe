@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quick Match - Ultimate Tic Tac Toe</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="site-shell">
+    <header class="site-header">
+      <a href="index.html" class="brand">UltimateTTT</a>
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="play.html">Play</a>
+        <a href="game.html" class="nav-play-btn">Game</a>
+      </nav>
+    </header>
+
+    <main class="page-main">
+      <section class="page-hero compact">
+        <span class="section-kicker">Quick Match</span>
+        <h1>Suche nach einem zufälligen Gegner...</h1>
+        <p class="hero-text narrow" id="queueDetailText">
+          Du wirst mit einem anderen wartenden Spieler gematcht, sobald einer verfügbar ist.
+        </p>
+      </section>
+
+      <section class="lobby-grid">
+        <article class="lobby-card">
+          <h2>Matchmaking Status</h2>
+          <div class="room-code-box">
+            <span class="room-label">Status</span>
+            <span class="room-code" id="queueStatusText">Suche läuft</span>
+          </div>
+
+          <div class="stack-actions">
+            <button class="secondary-btn" id="cancelQueueBtn" type="button">Suche abbrechen</button>
+          </div>
+
+          <span class="join-hint" id="queueHint">
+            Warte auf einen passenden Gegner...
+          </span>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
