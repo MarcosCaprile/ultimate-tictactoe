@@ -36,6 +36,14 @@ const WINNING_COMBINATIONS = [
   [2, 4, 6]
 ];
 
+const ROOM_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const ROOM_CODE_LENGTH = 6;
+const ROOM_CODE_PREFIX = "UTTT";
+const MAX_ROOM_CODE_ATTEMPTS = 25;
+
+let isCreatingRoom = false;
+let isJoiningRoom = false;
+
 function createEmptyCellStates() {
   return Array(81).fill("");
 }
@@ -61,9 +69,19 @@ function getMiniBoard(cellStates, boardIndex) {
   return cellStates.slice(start, start + 9);
 }
 
+function randomCodePart(length) {
+  let result = "";
+
+  for (let i = 0; i < length; i++) {
+    const index = Math.floor(Math.random() * ROOM_CODE_ALPHABET.length);
+    result += ROOM_CODE_ALPHABET[index];
+  }
+
+  return result;
+}
+
 function generateRoomCode() {
-  const randomPart = Math.floor(1000 + Math.random() * 9000);
-  return `UTTT-${randomPart}`;
+  return `${ROOM_CODE_PREFIX}-${randomCodePart(ROOM_CODE_LENGTH)}`;
 }
 
 function getWinner(board) {
@@ -96,8 +114,34 @@ function readRoomCode() {
   return params.get("room");
 }
 
+async function roomExists(roomCode) {
+  const roomRef = doc(db, "games", roomCode);
+  const snapshot = await getDoc(roomRef);
+  return snapshot.exists();
+}
+
+async function generateUniqueRoomCode() {
+  for (let attempt = 0; attempt < MAX_ROOM_CODE_ATTEMPTS; attempt++) {
+    const roomCode = generateRoomCode();
+    const exists = await roomExists(roomCode);
+
+    if (!exists) {
+      return roomCode;
+    }
+  }
+
+  throw new Error("Es konnte kein freier Room-Code erzeugt werden. Bitte versuche es erneut.");
+}
+
 async function createRoom(roomCode) {
-  await setDoc(doc(db, "games", roomCode), {
+  const roomRef = doc(db, "games", roomCode);
+  const existingSnapshot = await getDoc(roomRef);
+
+  if (existingSnapshot.exists()) {
+    throw new Error("Dieser Room-Code ist bereits belegt.");
+  }
+
+  await setDoc(roomRef, {
     roomCode,
     status: "waiting",
     host: {
@@ -116,23 +160,38 @@ async function createRoom(roomCode) {
 
 if (generateCodeBtn && generatedCodeEl && createHint) {
   generateCodeBtn.addEventListener("click", async () => {
-    const roomCode = generateRoomCode();
-    generatedCodeEl.textContent = roomCode;
-    createHint.textContent = "Room wird erstellt...";
+    if (isCreatingRoom) {
+      return;
+    }
+
+    isCreatingRoom = true;
+    generateCodeBtn.disabled = true;
+    createHint.textContent = "Sicherer Room-Code wird erzeugt...";
 
     try {
+      const roomCode = await generateUniqueRoomCode();
+      generatedCodeEl.textContent = roomCode;
+      createHint.textContent = "Room wird erstellt...";
+
       await createRoom(roomCode);
+
       createHint.textContent = `Room ${roomCode} erstellt. Weiterleitung als Host...`;
       window.location.href = `game.html?room=${roomCode}&mode=private-host`;
     } catch (error) {
       console.error("Fehler beim Erstellen des Rooms:", error);
       createHint.textContent = `Fehler beim Erstellen des Rooms: ${error.message}`;
+      generateCodeBtn.disabled = false;
+      isCreatingRoom = false;
     }
   });
 }
 
 if (joinRoomBtn && roomInput && joinHint) {
   joinRoomBtn.addEventListener("click", async () => {
+    if (isJoiningRoom) {
+      return;
+    }
+
     const roomCode = roomInput.value.trim().toUpperCase();
 
     if (!roomCode) {
@@ -141,11 +200,17 @@ if (joinRoomBtn && roomInput && joinHint) {
     }
 
     try {
+      isJoiningRoom = true;
+      joinRoomBtn.disabled = true;
+      joinHint.textContent = "Room wird gesucht...";
+
       const gameRef = doc(db, "games", roomCode);
       const snap = await getDoc(gameRef);
 
       if (!snap.exists()) {
         joinHint.textContent = "Room nicht gefunden.";
+        joinRoomBtn.disabled = false;
+        isJoiningRoom = false;
         return;
       }
 
@@ -153,6 +218,8 @@ if (joinRoomBtn && roomInput && joinHint) {
 
       if (game.guest) {
         joinHint.textContent = "Room ist bereits voll.";
+        joinRoomBtn.disabled = false;
+        isJoiningRoom = false;
         return;
       }
 
@@ -168,6 +235,8 @@ if (joinRoomBtn && roomInput && joinHint) {
     } catch (error) {
       console.error("Fehler beim Joinen des Rooms:", error);
       joinHint.textContent = `Fehler beim Joinen des Rooms: ${error.message}`;
+      joinRoomBtn.disabled = false;
+      isJoiningRoom = false;
     }
   });
 }
