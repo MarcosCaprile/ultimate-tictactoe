@@ -11,7 +11,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* =========================
-   DOM
+   DOM REFERENCES
    ========================= */
 
 const generatedCodeEl = document.getElementById("generatedCode");
@@ -42,7 +42,7 @@ const opponentStatusTextEl = document.getElementById("opponentStatusText");
 const gameSubtitleEl = document.getElementById("gameSubtitle");
 
 /* =========================
-   KONSTANTEN
+   CONSTANTS
    ========================= */
 
 const WINNING_COMBINATIONS = [
@@ -71,7 +71,7 @@ const MATCHMAKING_WAITING_TIMEOUT_MS = 45000;
 const MATCHMAKING_CHECK_INTERVAL_MS = 2500;
 
 /* =========================
-   HILFSFUNKTIONEN
+   HELPERS
    ========================= */
 
 function nowMs() {
@@ -150,32 +150,41 @@ function boardName(index) {
 }
 
 function readGameMode() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("mode");
+  return new URLSearchParams(window.location.search).get("mode");
 }
 
 function readRoomCode() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("room");
+  return new URLSearchParams(window.location.search).get("room");
 }
 
 function readAuthToken() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("auth");
+  return new URLSearchParams(window.location.search).get("auth");
 }
 
 function readJoinCodeFromLobbyUrl() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("join");
+  return new URLSearchParams(window.location.search).get("join");
 }
 
 function readQueueId() {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("queue");
+  return new URLSearchParams(window.location.search).get("queue");
 }
 
 function buildQuickMatchUrl(queueId) {
   return `quickmatch.html?queue=${encodeURIComponent(queueId)}`;
+}
+
+function buildHostGameUrl(roomCode, hostToken, isRandom = false) {
+  const mode = isRandom ? "random-host" : "private-host";
+  return `game.html?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(mode)}&auth=${encodeURIComponent(hostToken)}`;
+}
+
+function buildGuestGameUrl(roomCode, joinToken, isRandom = false) {
+  const mode = isRandom ? "random-guest" : "private-guest";
+  return `game.html?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(mode)}&auth=${encodeURIComponent(joinToken)}`;
+}
+
+function buildJoinLink(roomCode, joinToken) {
+  return `${window.location.origin}/game.html?room=${encodeURIComponent(roomCode)}&mode=private-guest&auth=${encodeURIComponent(joinToken)}`;
 }
 
 function isPresenceOnline(connected, lastSeen) {
@@ -191,10 +200,7 @@ function bothPlayersOffline(game) {
     ? isPresenceOnline(game.guestConnected, game.guestLastSeen)
     : false;
 
-  if (!guestExists) {
-    return !hostOnline;
-  }
-
+  if (!guestExists) return !hostOnline;
   return !hostOnline && !guestOnline;
 }
 
@@ -243,7 +249,7 @@ async function cleanupExpiredQueue() {
       }
     }
   } catch (error) {
-    console.error("Fehler beim Aufräumen der Queue:", error);
+    console.error("Fehler beim Aufräumen der Matchmaking-Queue:", error);
   }
 }
 
@@ -260,20 +266,6 @@ async function generateUniqueRoomCode() {
     if (!exists) return roomCode;
   }
   throw new Error("Es konnte kein freier Room-Code erzeugt werden.");
-}
-
-function buildHostGameUrl(roomCode, hostToken, isRandom = false) {
-  const mode = isRandom ? "random-host" : "private-host";
-  return `game.html?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(mode)}&auth=${encodeURIComponent(hostToken)}`;
-}
-
-function buildGuestGameUrl(roomCode, joinToken, isRandom = false) {
-  const mode = isRandom ? "random-guest" : "private-guest";
-  return `game.html?room=${encodeURIComponent(roomCode)}&mode=${encodeURIComponent(mode)}&auth=${encodeURIComponent(joinToken)}`;
-}
-
-function buildJoinLink(roomCode, joinToken) {
-  return `${window.location.origin}/game.html?room=${encodeURIComponent(roomCode)}&mode=private-guest&auth=${encodeURIComponent(joinToken)}`;
 }
 
 async function createRoom(roomCode) {
@@ -316,8 +308,11 @@ async function createRoom(roomCode) {
 }
 
 /* =========================
-   LOBBY / PRIVATE MATCH
+   LOBBY PAGE
    ========================= */
+
+let isCreatingRoom = false;
+let isJoiningRoom = false;
 
 if (roomInput) {
   const joinCode = readJoinCodeFromLobbyUrl();
@@ -334,6 +329,7 @@ if (generateCodeBtn && generatedCodeEl && createHint) {
 
   generateCodeBtn.addEventListener("click", async () => {
     if (isCreatingRoom) return;
+
     isCreatingRoom = true;
     generateCodeBtn.disabled = true;
     createHint.textContent = "Sicherer Room-Code wird erzeugt...";
@@ -426,7 +422,7 @@ if (joinRoomBtn && roomInput && joinHint) {
 }
 
 /* =========================
-   QUICK MATCH
+   QUICKMATCH PAGE
    ========================= */
 
 if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
@@ -604,7 +600,7 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
 }
 
 /* =========================
-   SPIELSEITE
+   GAME PAGE
    ========================= */
 
 if (
@@ -711,30 +707,6 @@ if (
     }
   }
 
-  function createBoard() {
-    ultimateBoard.innerHTML = "";
-
-    for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
-      const miniBoard = document.createElement("div");
-      miniBoard.className = "mini-board";
-      miniBoard.dataset.boardIndex = String(boardIndex);
-
-      for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
-        const cell = document.createElement("button");
-        cell.className = "cell";
-        cell.dataset.boardIndex = String(boardIndex);
-        cell.dataset.cellIndex = String(cellIndex);
-        cell.type = "button";
-        cell.addEventListener("click", handleCellClick);
-        miniBoard.appendChild(cell);
-      }
-
-      ultimateBoard.appendChild(miniBoard);
-    }
-
-    render();
-  }
-
   function getAllValidMovesForState(stateCellStates, stateMiniBoardWinners, stateNextBoardIndex) {
     const moves = [];
 
@@ -792,10 +764,8 @@ if (
       newStatusText = "Unentschieden!";
       newNextBoardIndex = null;
       newCurrentPlayer = player;
-    } else {
-      if (newMiniBoardWinners[newNextBoardIndex] !== "") {
-        newNextBoardIndex = null;
-      }
+    } else if (newMiniBoardWinners[newNextBoardIndex] !== "") {
+      newNextBoardIndex = null;
     }
 
     return {
@@ -836,36 +806,6 @@ if (
       if (winner === "X") score -= 60 + bonus;
     });
 
-    WINNING_COMBINATIONS.forEach(([a, b, c]) => {
-      const line = [normalizedGlobalBoard[a], normalizedGlobalBoard[b], normalizedGlobalBoard[c]];
-      const oCount = line.filter((v) => v === "O").length;
-      const xCount = line.filter((v) => v === "X").length;
-      const emptyCount = line.filter((v) => v === "").length;
-
-      if (oCount === 2 && emptyCount === 1) score += 140;
-      if (xCount === 2 && emptyCount === 1) score -= 150;
-      if (oCount === 1 && emptyCount === 2) score += 18;
-      if (xCount === 1 && emptyCount === 2) score -= 18;
-    });
-
-    for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
-      if (stateMiniBoardWinners[boardIndex] !== "") continue;
-      const mini = getMiniBoard(stateCellStates, boardIndex);
-
-      WINNING_COMBINATIONS.forEach(([a, b, c]) => {
-        const line = [mini[a], mini[b], mini[c]];
-        const oCount = line.filter((v) => v === "O").length;
-        const xCount = line.filter((v) => v === "X").length;
-        const emptyCount = line.filter((v) => v === "").length;
-
-        if (oCount === 2 && emptyCount === 1) score += 22;
-        if (xCount === 2 && emptyCount === 1) score -= 24;
-      });
-
-      if (mini[4] === "O") score += 5;
-      if (mini[4] === "X") score -= 5;
-    }
-
     return score;
   }
 
@@ -900,33 +840,8 @@ if (
       const cellBonus = move.cellIndex === 4 ? 12 : [0, 2, 6, 8].includes(move.cellIndex) ? 6 : 3;
       score += boardBonus + cellBonus;
 
-      if (botDifficulty === "hard" && !botState.gameOver) {
-        const opponentMoves = getAllValidMovesForState(
-          botState.cellStates,
-          botState.miniBoardWinners,
-          botState.nextBoardIndex
-        );
-
-        let opponentBest = -Infinity;
-
-        for (const oppMove of opponentMoves) {
-          const oppState = buildNextStateFrom(
-            "X",
-            botState.cellStates,
-            botState.miniBoardWinners,
-            botState.nextBoardIndex,
-            oppMove.boardIndex,
-            oppMove.cellIndex
-          );
-
-          let oppScore = -evaluateBoardForBot(oppState.cellStates, oppState.miniBoardWinners);
-          if (oppState.winner === "X") oppScore += 400000;
-          if (oppScore > opponentBest) opponentBest = oppScore;
-        }
-
-        if (opponentBest !== -Infinity) {
-          score -= opponentBest * 0.8;
-        }
+      if (botDifficulty === "hard") {
+        score += Math.random() * 4;
       }
 
       if (score > bestScore) {
@@ -997,126 +912,12 @@ if (
     return boardIndex === nextBoardIndex;
   }
 
-  function getLineCoordinates(line) {
-    const centerMap = {
-      0: { x: 16.67, y: 16.67 },
-      1: { x: 50, y: 16.67 },
-      2: { x: 83.33, y: 16.67 },
-      3: { x: 16.67, y: 50 },
-      4: { x: 50, y: 50 },
-      5: { x: 83.33, y: 50 },
-      6: { x: 16.67, y: 83.33 },
-      7: { x: 50, y: 83.33 },
-      8: { x: 83.33, y: 83.33 }
-    };
-
-    const start = centerMap[line[0]];
-    const end = centerMap[line[2]];
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-    return {
-      left: start.x,
-      top: start.y,
-      width: length,
-      angle
-    };
-  }
-
-  function getResultOverlayData() {
-    if (!gameOver || !globalWinner) {
-      if (globalWinner === "draw") {
-        return {
-          variant: "draw",
-          title: "Unentschieden",
-          subtitle: "Keiner hat das Match gewonnen."
-        };
-      }
-      return null;
-    }
-
-    if (!isRealtimeGame && !isBotMode) {
-      return {
-        variant: "win",
-        title: `Spieler ${globalWinner} gewinnt!`,
-        subtitle: "Das Spiel ist entschieden."
-      };
-    }
-
-    if (isBotMode) {
-      if (globalWinner === "X") {
-        return {
-          variant: "win",
-          title: "Du gewinnst!",
-          subtitle: `Du hast Bot (${botDifficulty}) besiegt.`
-        };
-      }
-      if (globalWinner === "O") {
-        return {
-          variant: "loss",
-          title: "Du verlierst!",
-          subtitle: `Bot (${botDifficulty}) hat gewonnen.`
-        };
-      }
-    }
-
-    if (globalWinner === playerSymbol) {
-      return {
-        variant: "win",
-        title: "Du gewinnst!",
-        subtitle: "Starker Zug — das Match gehört dir."
-      };
-    }
-
-    return {
-      variant: "loss",
-      title: "Du verlierst!",
-      subtitle: `Spieler ${globalWinner} hat das Match gewonnen.`
-    };
-  }
-
-  function renderGlobalEffects() {
-    const existingLine = ultimateBoard.querySelector(".global-win-line");
-    if (existingLine) existingLine.remove();
-
-    const existingOverlay = ultimateBoard.querySelector(".game-result-overlay");
-    if (existingOverlay) existingOverlay.remove();
-
-    if (globalWinningLine && globalWinner && globalWinner !== "draw") {
-      const coords = getLineCoordinates(globalWinningLine);
-      const line = document.createElement("div");
-      line.className = `global-win-line ${globalWinner.toLowerCase()}`;
-      line.style.left = `${coords.left}%`;
-      line.style.top = `${coords.top}%`;
-      line.style.width = `${coords.width}%`;
-      line.style.transform = `translateY(-50%) rotate(${coords.angle}deg) scaleX(1)`;
-      ultimateBoard.appendChild(line);
-    }
-
-    const overlayData = getResultOverlayData();
-    if (!overlayData) return;
-
-    const overlay = document.createElement("div");
-    overlay.className = `game-result-overlay ${overlayData.variant}`;
-    overlay.innerHTML = `
-      <div class="game-result-inner">
-        <div class="game-result-title">${overlayData.title}</div>
-        <div class="game-result-subtitle">${overlayData.subtitle}</div>
-      </div>
-    `;
-    ultimateBoard.appendChild(overlay);
-  }
-
   async function handleCellClick(event) {
     const target = event.currentTarget;
     const boardIndex = Number(target.dataset.boardIndex);
     const cellIndex = Number(target.dataset.cellIndex);
 
-    if (!isMoveAllowed(boardIndex, cellIndex)) {
-      return;
-    }
+    if (!isMoveAllowed(boardIndex, cellIndex)) return;
 
     const nextState = buildNextState(boardIndex, cellIndex);
 
@@ -1151,61 +952,6 @@ if (
     maybeTriggerBotMove();
   }
 
-  function render() {
-    const miniBoards = document.querySelectorAll(".mini-board");
-
-    miniBoards.forEach((miniBoard, boardIndex) => {
-      miniBoard.className = "mini-board";
-
-      const boardWinner = miniBoardWinners[boardIndex];
-
-      if (!gameOver) {
-        if (nextBoardIndex === null) {
-          if (boardWinner === "") {
-            miniBoard.classList.add("active");
-          }
-        } else if (nextBoardIndex === boardIndex && boardWinner === "") {
-          miniBoard.classList.add("active");
-        }
-      }
-
-      if (boardWinner === "X") miniBoard.classList.add("won-x");
-      if (boardWinner === "O") miniBoard.classList.add("won-o");
-      if (boardWinner === "draw") miniBoard.classList.add("drawn");
-
-      const cells = miniBoard.querySelectorAll(".cell");
-      cells.forEach((cell, cellIndex) => {
-        const value = getCellValue(cellStates, boardIndex, cellIndex);
-        cell.textContent = value;
-        cell.classList.remove("x", "o");
-
-        if (value === "X") cell.classList.add("x");
-        if (value === "O") cell.classList.add("o");
-
-        cell.disabled = !isMoveAllowed(boardIndex, cellIndex);
-      });
-
-      const existingOverlay = miniBoard.querySelector(".board-overlay");
-      if (existingOverlay) existingOverlay.remove();
-
-      if (boardWinner === "X" || boardWinner === "O") {
-        const overlay = document.createElement("div");
-        overlay.className = `board-overlay ${boardWinner.toLowerCase()}`;
-        overlay.textContent = boardWinner;
-        miniBoard.appendChild(overlay);
-      } else if (boardWinner === "draw") {
-        const overlay = document.createElement("div");
-        overlay.className = "board-overlay draw";
-        overlay.textContent = "Draw";
-        miniBoard.appendChild(overlay);
-      }
-    });
-
-    currentPlayerEl.textContent = currentPlayer;
-    targetBoardEl.textContent = nextBoardIndex === null ? "Beliebig" : boardName(nextBoardIndex);
-    renderGlobalEffects();
-  }
-
   function updateOpponentStatus(game) {
     const hostOnline = isPresenceOnline(game.hostConnected, game.hostLastSeen);
     const guestExists = !!game.guest;
@@ -1219,6 +965,7 @@ if (
         opponentStatusTextEl.textContent = "Noch nicht beigetreten";
         return;
       }
+
       if (guestOnline) {
         opponentOnline = true;
         opponentStatusTextEl.textContent = "Online";
@@ -1226,6 +973,7 @@ if (
         opponentOnline = false;
         opponentStatusTextEl.textContent = "Offline / getrennt";
       }
+
       return;
     }
 
@@ -1247,7 +995,7 @@ if (
     globalWinner = game.winner ?? "";
     roomJoinToken = game.joinToken ?? null;
 
-    const normalizedGlobalBoard = miniBoardWinners.map((value) => (value === "draw" ? "" : value));
+    const normalizedGlobalBoard = miniBoardWinners.map((value) => value === "draw" ? "" : value);
     globalWinningLine = findWinningLine(normalizedGlobalBoard);
 
     updateOpponentStatus(game);
@@ -1311,7 +1059,6 @@ if (
 
   async function maybeDeleteRoomIfEmpty() {
     if (!roomRef) return;
-
     try {
       const snapshot = await getDoc(roomRef);
       if (!snapshot.exists()) return;
@@ -1448,6 +1195,210 @@ if (
     }
   }
 
+  function renderGlobalEffects() {
+    const existingLine = ultimateBoard.querySelector(".global-win-line");
+    if (existingLine) existingLine.remove();
+
+    const existingOverlay = ultimateBoard.querySelector(".game-result-overlay");
+    if (existingOverlay) existingOverlay.remove();
+
+    if (globalWinningLine && globalWinner && globalWinner !== "draw") {
+      const centerMap = {
+        0: { x: 16.67, y: 16.67 },
+        1: { x: 50, y: 16.67 },
+        2: { x: 83.33, y: 16.67 },
+        3: { x: 16.67, y: 50 },
+        4: { x: 50, y: 50 },
+        5: { x: 83.33, y: 50 },
+        6: { x: 16.67, y: 83.33 },
+        7: { x: 50, y: 83.33 },
+        8: { x: 83.33, y: 83.33 }
+      };
+
+      const start = centerMap[globalWinningLine[0]];
+      const end = centerMap[globalWinningLine[2]];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const width = Math.sqrt(dx * dx + dy * dy);
+      const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+      const line = document.createElement("div");
+      line.className = `global-win-line ${globalWinner.toLowerCase()}`;
+      line.style.left = `${start.x}%`;
+      line.style.top = `${start.y}%`;
+      line.style.width = `${width}%`;
+      line.style.transform = `translateY(-50%) rotate(${angle}deg) scaleX(1)`;
+      ultimateBoard.appendChild(line);
+    }
+
+    const overlayData = (() => {
+      if (!gameOver || !globalWinner) {
+        if (globalWinner === "draw") {
+          return {
+            variant: "draw",
+            title: "Unentschieden",
+            subtitle: "Keiner hat das Match gewonnen."
+          };
+        }
+        return null;
+      }
+
+      if (!isRealtimeGame && !isBotMode) {
+        return {
+          variant: "win",
+          title: `Spieler ${globalWinner} gewinnt!`,
+          subtitle: "Das Spiel ist entschieden."
+        };
+      }
+
+      if (isBotMode) {
+        if (globalWinner === "X") {
+          return {
+            variant: "win",
+            title: "Du gewinnst!",
+            subtitle: `Du hast Bot (${botDifficulty}) besiegt.`
+          };
+        }
+        if (globalWinner === "O") {
+          return {
+            variant: "loss",
+            title: "Du verlierst!",
+            subtitle: `Bot (${botDifficulty}) hat gewonnen.`
+          };
+        }
+      }
+
+      if (globalWinner === playerSymbol) {
+        return {
+          variant: "win",
+          title: "Du gewinnst!",
+          subtitle: "Starker Zug — das Match gehört dir."
+        };
+      }
+
+      return {
+        variant: "loss",
+        title: "Du verlierst!",
+        subtitle: `Spieler ${globalWinner} hat das Match gewonnen.`
+      };
+    })();
+
+    if (!overlayData) return;
+
+    const overlay = document.createElement("div");
+    overlay.className = `game-result-overlay ${overlayData.variant}`;
+    overlay.innerHTML = `
+      <div class="game-result-inner">
+        <div class="game-result-title">${overlayData.title}</div>
+        <div class="game-result-subtitle">${overlayData.subtitle}</div>
+      </div>
+    `;
+    ultimateBoard.appendChild(overlay);
+  }
+
+  function render() {
+    const miniBoards = document.querySelectorAll(".mini-board");
+
+    miniBoards.forEach((miniBoard, boardIndex) => {
+      miniBoard.className = "mini-board";
+      const boardWinner = miniBoardWinners[boardIndex];
+
+      if (!gameOver) {
+        if (nextBoardIndex === null) {
+          if (boardWinner === "") {
+            miniBoard.classList.add("active");
+          }
+        } else if (nextBoardIndex === boardIndex && boardWinner === "") {
+          miniBoard.classList.add("active");
+        }
+      }
+
+      if (boardWinner === "X") miniBoard.classList.add("won-x");
+      if (boardWinner === "O") miniBoard.classList.add("won-o");
+      if (boardWinner === "draw") miniBoard.classList.add("drawn");
+
+      const cells = miniBoard.querySelectorAll(".cell");
+
+      cells.forEach((cell, cellIndex) => {
+        const value = getCellValue(cellStates, boardIndex, cellIndex);
+        cell.textContent = value;
+        cell.classList.remove("x", "o");
+
+        if (value === "X") cell.classList.add("x");
+        if (value === "O") cell.classList.add("o");
+
+        cell.disabled = !isMoveAllowed(boardIndex, cellIndex);
+      });
+
+      const existingOverlay = miniBoard.querySelector(".board-overlay");
+      if (existingOverlay) existingOverlay.remove();
+
+      if (boardWinner === "X" || boardWinner === "O") {
+        const overlay = document.createElement("div");
+        overlay.className = `board-overlay ${boardWinner.toLowerCase()}`;
+        overlay.textContent = boardWinner;
+        miniBoard.appendChild(overlay);
+      } else if (boardWinner === "draw") {
+        const overlay = document.createElement("div");
+        overlay.className = "board-overlay draw";
+        overlay.textContent = "Draw";
+        miniBoard.appendChild(overlay);
+      }
+    });
+
+    currentPlayerEl.textContent = currentPlayer;
+    targetBoardEl.textContent = nextBoardIndex === null ? "Beliebig" : boardName(nextBoardIndex);
+    renderGlobalEffects();
+  }
+
+  if (copyRoomCodeBtn) {
+    copyRoomCodeBtn.addEventListener("click", async () => {
+      if (!roomCode) {
+        statusTextEl.textContent = "Kein Room-Code vorhanden.";
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(roomCode);
+        statusTextEl.textContent = "Room-Code kopiert.";
+      } catch (error) {
+        console.error(error);
+      }
+    });
+  }
+
+  if (copyJoinLinkBtn) {
+    copyJoinLinkBtn.addEventListener("click", async () => {
+      if (!roomCode || !roomJoinToken) {
+        statusTextEl.textContent = "Join-Link noch nicht verfügbar.";
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(buildJoinLink(roomCode, roomJoinToken));
+        statusTextEl.textContent = "Join-Link kopiert.";
+      } catch (error) {
+        console.error(error);
+      }
+    });
+  }
+
+  resetBtn.addEventListener("click", resetGame);
+
+  if (leaveRoomBtn) {
+    leaveRoomBtn.addEventListener("click", leaveRoomAndExit);
+  }
+
+  createBoard();
+  setModeDisplay();
+
+  if (isRealtimeGame) {
+    setupRealtimeRoom();
+  } else {
+    render();
+    maybeTriggerBotMove();
+  }
+
   function setupRealtimeRoom() {
     if (!roomRef || !roomCode) return;
 
@@ -1482,161 +1433,5 @@ if (
 
     window.addEventListener("pagehide", handleBestEffortLeave);
     window.addEventListener("beforeunload", handleBestEffortLeave);
-  }
-
-  function getResultOverlayData() {
-    if (!gameOver || !globalWinner) {
-      if (globalWinner === "draw") {
-        return {
-          variant: "draw",
-          title: "Unentschieden",
-          subtitle: "Keiner hat das Match gewonnen."
-        };
-      }
-      return null;
-    }
-
-    if (!isRealtimeGame && !isBotMode) {
-      return {
-        variant: "win",
-        title: `Spieler ${globalWinner} gewinnt!`,
-        subtitle: "Das Spiel ist entschieden."
-      };
-    }
-
-    if (isBotMode) {
-      if (globalWinner === "X") {
-        return {
-          variant: "win",
-          title: "Du gewinnst!",
-          subtitle: `Du hast Bot (${botDifficulty}) besiegt.`
-        };
-      }
-      if (globalWinner === "O") {
-        return {
-          variant: "loss",
-          title: "Du verlierst!",
-          subtitle: `Bot (${botDifficulty}) hat gewonnen.`
-        };
-      }
-    }
-
-    if (globalWinner === playerSymbol) {
-      return {
-        variant: "win",
-        title: "Du gewinnst!",
-        subtitle: "Starker Zug — das Match gehört dir."
-      };
-    }
-
-    return {
-      variant: "loss",
-      title: "Du verlierst!",
-      subtitle: `Spieler ${globalWinner} hat das Match gewonnen.`
-    };
-  }
-
-  function renderGlobalEffects() {
-    const existingLine = ultimateBoard.querySelector(".global-win-line");
-    if (existingLine) existingLine.remove();
-
-    const existingOverlay = ultimateBoard.querySelector(".game-result-overlay");
-    if (existingOverlay) existingOverlay.remove();
-
-    if (globalWinningLine && globalWinner && globalWinner !== "draw") {
-      const coords = (() => {
-        const centerMap = {
-          0: { x: 16.67, y: 16.67 },
-          1: { x: 50, y: 16.67 },
-          2: { x: 83.33, y: 16.67 },
-          3: { x: 16.67, y: 50 },
-          4: { x: 50, y: 50 },
-          5: { x: 83.33, y: 50 },
-          6: { x: 16.67, y: 83.33 },
-          7: { x: 50, y: 83.33 },
-          8: { x: 83.33, y: 83.33 }
-        };
-
-        const start = centerMap[globalWinningLine[0]];
-        const end = centerMap[globalWinningLine[2]];
-        const dx = end.x - start.x;
-        const dy = end.y - start.y;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const angle = Math.atan2(dy, dx) * (180 / Math.PI);
-
-        return { left: start.x, top: start.y, width: length, angle };
-      })();
-
-      const line = document.createElement("div");
-      line.className = `global-win-line ${globalWinner.toLowerCase()}`;
-      line.style.left = `${coords.left}%`;
-      line.style.top = `${coords.top}%`;
-      line.style.width = `${coords.width}%`;
-      line.style.transform = `translateY(-50%) rotate(${coords.angle}deg) scaleX(1)`;
-      ultimateBoard.appendChild(line);
-    }
-
-    const overlayData = getResultOverlayData();
-    if (!overlayData) return;
-
-    const overlay = document.createElement("div");
-    overlay.className = `game-result-overlay ${overlayData.variant}`;
-    overlay.innerHTML = `
-      <div class="game-result-inner">
-        <div class="game-result-title">${overlayData.title}</div>
-        <div class="game-result-subtitle">${overlayData.subtitle}</div>
-      </div>
-    `;
-    ultimateBoard.appendChild(overlay);
-  }
-
-  if (copyRoomCodeBtn) {
-    copyRoomCodeBtn.addEventListener("click", async () => {
-      if (!roomCode) {
-        statusTextEl.textContent = "Kein Room-Code vorhanden.";
-        return;
-      }
-
-      try {
-        await navigator.clipboard.writeText(roomCode);
-        statusTextEl.textContent = "Room-Code kopiert.";
-      } catch (error) {
-        console.error(error);
-        statusTextEl.textContent = "Kopieren fehlgeschlagen.";
-      }
-    });
-  }
-
-  if (copyJoinLinkBtn) {
-    copyJoinLinkBtn.addEventListener("click", async () => {
-      if (!roomCode || !roomJoinToken) {
-        statusTextEl.textContent = "Join-Link noch nicht verfügbar.";
-        return;
-      }
-
-      try {
-        await navigator.clipboard.writeText(buildJoinLink(roomCode, roomJoinToken));
-        statusTextEl.textContent = "Join-Link kopiert.";
-      } catch (error) {
-        console.error(error);
-        statusTextEl.textContent = "Kopieren fehlgeschlagen.";
-      }
-    });
-  }
-
-  resetBtn.addEventListener("click", resetGame);
-
-  if (leaveRoomBtn) {
-    leaveRoomBtn.addEventListener("click", leaveRoomAndExit);
-  }
-
-  setModeDisplay();
-  createBoard();
-
-  if (isRealtimeGame) {
-    setupRealtimeRoom();
-  } else {
-    render();
-    maybeTriggerBotMove();
   }
 }
