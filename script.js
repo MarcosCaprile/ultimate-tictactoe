@@ -9,7 +9,6 @@ import {
 
 const generatedCodeEl = document.getElementById("generatedCode");
 const generateCodeBtn = document.getElementById("generateCodeBtn");
-const hostRoomLink = document.getElementById("hostRoomLink");
 const createHint = document.getElementById("createHint");
 
 const joinRoomBtn = document.getElementById("joinRoomBtn");
@@ -98,18 +97,19 @@ async function createRoom(roomCode) {
   });
 }
 
-if (generateCodeBtn && generatedCodeEl && hostRoomLink && createHint) {
+if (generateCodeBtn && generatedCodeEl && createHint) {
   generateCodeBtn.addEventListener("click", async () => {
     const roomCode = generateRoomCode();
     generatedCodeEl.textContent = roomCode;
+    createHint.textContent = "Room wird erstellt...";
 
     try {
       await createRoom(roomCode);
-      hostRoomLink.href = `game.html?room=${roomCode}&mode=private-host`;
-      createHint.textContent = `Room ${roomCode} erstellt. Du kannst jetzt als Host ins Spiel gehen.`;
+      createHint.textContent = `Room ${roomCode} erstellt. Weiterleitung als Host...`;
+      window.location.href = `game.html?room=${roomCode}&mode=private-host`;
     } catch (error) {
-      console.error(error);
-      createHint.textContent = "Fehler beim Erstellen des Rooms.";
+      console.error("Fehler beim Erstellen des Rooms:", error);
+      createHint.textContent = `Fehler beim Erstellen des Rooms: ${error.message}`;
     }
   });
 }
@@ -149,8 +149,8 @@ if (joinRoomBtn && roomInput && joinHint) {
 
       window.location.href = `game.html?room=${roomCode}&mode=private-guest`;
     } catch (error) {
-      console.error(error);
-      joinHint.textContent = "Fehler beim Joinen des Rooms.";
+      console.error("Fehler beim Joinen des Rooms:", error);
+      joinHint.textContent = `Fehler beim Joinen des Rooms: ${error.message}`;
     }
   });
 }
@@ -230,7 +230,6 @@ if (
   function isMoveAllowed(boardIndex, cellIndex) {
     if (cellStates[boardIndex][cellIndex] !== "") return false;
     if (miniBoardWinners[boardIndex] !== "") return false;
-
     if (gameOver) return false;
 
     if (isRealtimeGame) {
@@ -465,19 +464,11 @@ if (
 
       const game = snapshot.data();
 
-      if (
-        mode === "private-host" &&
-        game.status === "waiting" &&
-        !game.guest
-      ) {
+      if (mode === "private-host" && game.status === "waiting" && !game.guest) {
         statusTextEl.textContent = "Warte auf zweiten Spieler...";
       }
 
-      if (
-        mode === "private-host" &&
-        game.status === "waiting" &&
-        game.guest
-      ) {
+      if (mode === "private-host" && game.status === "waiting" && game.guest) {
         try {
           await updateDoc(gameRef, {
             status: "playing"
