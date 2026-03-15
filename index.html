@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ultimate Tic Tac Toe</title>
+  <title>Play Hub - Ultimate Tic Tac Toe</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -11,127 +11,95 @@
     <header class="site-header">
       <a href="index.html" class="brand">UltimateTTT</a>
       <nav class="nav">
-        <a href="#how-it-works">How it works</a>
-        <a href="#features">Features</a>
-        <a href="play.html" class="nav-play-btn">Play now</a>
+        <a href="index.html">Home</a>
+        <a href="play.html" class="nav-play-btn">Play</a>
+        <a href="lobby.html">Lobby</a>
       </nav>
     </header>
 
-    <main>
-      <section class="hero">
-        <div class="hero-copy">
-          <span class="hero-badge">Strategy • Browser-based • Multiplayer-ready</span>
-          <h1>Die moderne Plattform für Ultimate Tic Tac Toe.</h1>
-          <p class="hero-text">
-            Spiele lokal, gegen zufällige Gegner online, mit einem Freund im privaten Room
-            oder offline gegen Bots in mehreren Schwierigkeitsstufen.
-          </p>
-
-          <div class="hero-actions">
-            <a href="play.html" class="primary-btn">Jetzt spielen</a>
-            <a href="#how-it-works" class="secondary-btn">Regeln ansehen</a>
-          </div>
-
-          <div class="hero-stats">
-            <div class="stat-card">
-              <span class="stat-label">Aktueller Stand</span>
-              <span class="stat-value">Playable Multiplayer</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-label">Modi</span>
-              <span class="stat-value">Random, Private, Bot</span>
-            </div>
-            <div class="stat-card">
-              <span class="stat-label">Nächster Schritt</span>
-              <span class="stat-value">Polish & Leaderboard</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="hero-visual">
-          <div class="preview-board">
-            <div class="preview-mini"><span>X</span><span>O</span><span>X</span><span></span><span>X</span><span></span><span>O</span><span></span><span>O</span></div>
-            <div class="preview-mini active"><span></span><span></span><span></span><span></span><span>X</span><span></span><span></span><span></span><span></span></div>
-            <div class="preview-mini"><span>O</span><span></span><span>X</span><span></span><span>O</span><span></span><span>X</span><span></span><span></span></div>
-            <div class="preview-mini"><span></span><span>X</span><span></span><span></span><span>O</span><span></span><span></span><span>X</span><span></span></div>
-            <div class="preview-mini won-x"><span>X</span><span>X</span><span>X</span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-            <div class="preview-mini"><span></span><span></span><span>O</span><span>X</span><span></span><span></span><span></span><span>O</span><span></span></div>
-            <div class="preview-mini"><span>X</span><span></span><span></span><span></span><span>O</span><span></span><span></span><span></span><span>X</span></div>
-            <div class="preview-mini"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>
-            <div class="preview-mini won-o"><span>O</span><span></span><span></span><span>O</span><span></span><span></span><span>O</span><span></span><span></span></div>
-          </div>
-        </div>
+    <main class="page-main">
+      <section class="page-hero compact">
+        <span class="section-kicker">Play hub</span>
+        <h1>Wähle deinen Spielmodus</h1>
+        <p class="hero-text narrow">
+          Entscheide selbst, wie du spielen willst: gegen zufällige Gegner online,
+          in privaten Rooms mit Freunden, lokal auf einem Gerät oder offline gegen Bots
+          mit mehreren Schwierigkeitsstufen.
+        </p>
       </section>
 
-      <section id="how-it-works" class="content-section">
-        <div class="section-heading">
-          <span class="section-kicker">How it works</span>
-          <h2>Die Grundidee</h2>
-          <p>
-            Jeder Zug beeinflusst nicht nur ein kleines Feld, sondern bestimmt auch,
-            wo der Gegner als Nächstes spielen muss.
-          </p>
-        </div>
+      <section class="mode-grid">
+        <article class="mode-card featured">
+          <span class="mode-tag">Online</span>
+          <h2>Quick Match</h2>
+          <p>Finde automatisch einen zufälligen Gegner und starte direkt ein Online-Match.</p>
+          <ul class="mode-list">
+            <li>automatisches Matchmaking</li>
+            <li>kein Room-Code nötig</li>
+            <li>Realtime-Multiplayer</li>
+          </ul>
+          <a href="quickmatch.html" class="primary-btn">Zufälligen Gegner finden</a>
+        </article>
 
-        <div class="steps-grid">
-          <article class="step-card">
-            <span class="step-number">01</span>
-            <h3>Mini-Board spielen</h3>
-            <p>Jeder Zug wird in einem kleinen 3×3-Feld gemacht.</p>
-          </article>
-          <article class="step-card">
-            <span class="step-number">02</span>
-            <h3>Nächstes Feld festlegen</h3>
-            <p>Die Position deines Zuges bestimmt das Ziel-Board für den Gegner.</p>
-          </article>
-          <article class="step-card">
-            <span class="step-number">03</span>
-            <h3>Kleine Boards gewinnen</h3>
-            <p>Drei in einer Reihe in einem Mini-Board sichern dir dieses Board.</p>
-          </article>
-          <article class="step-card">
-            <span class="step-number">04</span>
-            <h3>Großes Spiel gewinnen</h3>
-            <p>Drei gewonnene Mini-Boards in einer Reihe bedeuten den Gesamtsieg.</p>
-          </article>
-        </div>
-      </section>
+        <article class="mode-card">
+          <span class="mode-tag">Online</span>
+          <h2>Privates Match</h2>
+          <p>Erstelle einen Room und lade einen Freund per Code oder Join-Link ein.</p>
+          <ul class="mode-list">
+            <li>Room-Code</li>
+            <li>Join-Link</li>
+            <li>Reconnect & Presence</li>
+          </ul>
+          <a href="lobby.html" class="secondary-btn">Zur privaten Lobby</a>
+        </article>
 
-      <section id="features" class="content-section">
-        <div class="section-heading">
-          <span class="section-kicker">Features</span>
-          <h2>Was jetzt schon drin ist</h2>
-        </div>
+        <article class="mode-card">
+          <span class="mode-tag">Offline</span>
+          <h2>Lokales Spiel</h2>
+          <p>Spiele direkt auf einem Gerät ohne Online-Verbindung.</p>
+          <ul class="mode-list">
+            <li>lokal spielbar</li>
+            <li>ideal zum Testen</li>
+            <li>kein Internet nötig</li>
+          </ul>
+          <a href="game.html?mode=local" class="secondary-btn">Lokales Spiel starten</a>
+        </article>
 
-        <div class="feature-grid">
-          <article class="feature-card">
-            <h3>Quick Match</h3>
-            <p>Spiele online gegen zufällige Gegner ohne Room-Code.</p>
-          </article>
-          <article class="feature-card">
-            <h3>Private Rooms</h3>
-            <p>Erstelle Rooms mit Join-Link, Reconnect und Presence-Erkennung.</p>
-          </article>
-          <article class="feature-card">
-            <h3>Bot Modus</h3>
-            <p>Spiele offline gegen Easy-, Medium- und Hard-Bots.</p>
-          </article>
-          <article class="feature-card">
-            <h3>Gewinnanimationen</h3>
-            <p>Gewinnlinie, Sieg-/Niederlage-Overlay und klarer Spielausgang.</p>
-          </article>
-        </div>
-      </section>
+        <article class="mode-card">
+          <span class="mode-tag">Bot</span>
+          <h2>Bot - Easy</h2>
+          <p>Ein einfacher Bot für entspannte Runden und zum Einstieg.</p>
+          <ul class="mode-list">
+            <li>leichte Schwierigkeit</li>
+            <li>einfachere Züge</li>
+            <li>gut zum Lernen</li>
+          </ul>
+          <a href="game.html?mode=bot-easy" class="secondary-btn">Easy starten</a>
+        </article>
 
-      <section class="cta-section">
-        <div class="cta-card">
-          <div>
-            <span class="section-kicker">Start here</span>
-            <h2>Wähle deinen Modus</h2>
-            <p>Gehe zuerst in den Play Hub und entscheide dort, wie du spielen willst.</p>
-          </div>
-          <a href="play.html" class="primary-btn">Zum Play Hub</a>
-        </div>
+        <article class="mode-card">
+          <span class="mode-tag">Bot</span>
+          <h2>Bot - Medium</h2>
+          <p>Ein etwas stärkerer Bot mit besserer Zugauswahl und mehr Taktik.</p>
+          <ul class="mode-list">
+            <li>solide Schwierigkeit</li>
+            <li>bessere Entscheidungen</li>
+            <li>mehr Druck im Spiel</li>
+          </ul>
+          <a href="game.html?mode=bot-medium" class="secondary-btn">Medium starten</a>
+        </article>
+
+        <article class="mode-card">
+          <span class="mode-tag">Bot</span>
+          <h2>Bot - Hard</h2>
+          <p>Ein stärkerer Bot mit besserer Bewertung von Positionen und Gegenzügen.</p>
+          <ul class="mode-list">
+            <li>schwierigster Bot</li>
+            <li>stärkere Heuristik</li>
+            <li>deutlich fordernder</li>
+          </ul>
+          <a href="game.html?mode=bot-hard" class="secondary-btn">Hard starten</a>
+        </article>
       </section>
     </main>
   </div>

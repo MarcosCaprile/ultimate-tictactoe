@@ -3,9 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ultimate Tic Tac Toe - Game</title>
+  <title>Play Hub - Ultimate Tic Tac Toe</title>
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="game-effects.css" />
 </head>
 <body>
   <div class="site-shell">
@@ -13,74 +12,96 @@
       <a href="index.html" class="brand">UltimateTTT</a>
       <nav class="nav">
         <a href="index.html">Home</a>
-        <a href="play.html">Play</a>
+        <a href="play.html" class="nav-play-btn">Play</a>
         <a href="lobby.html">Lobby</a>
-        <a href="game.html" class="nav-play-btn">Game</a>
       </nav>
     </header>
 
-    <main class="game-layout">
-      <section class="game-headline">
-        <div>
-          <span class="section-kicker">Game board</span>
-          <h1>Ultimate Tic Tac Toe</h1>
-          <p class="subtitle" id="gameSubtitle">
-            Realtime-Spiel mit Random Match, privaten Rooms, Bot-Modi und Gewinnanimationen.
-          </p>
-        </div>
-
-        <div class="game-actions">
-          <a href="play.html" class="secondary-btn small-btn">Zurück zum Hub</a>
-          <button id="copyRoomCodeBtn" class="secondary-btn small-btn" type="button">Code kopieren</button>
-          <button id="copyJoinLinkBtn" class="secondary-btn small-btn" type="button">Join-Link kopieren</button>
-          <button id="leaveRoomBtn" class="secondary-btn small-btn" type="button">Room verlassen</button>
-          <button id="resetBtn" class="primary-btn small-btn button-reset" type="button">Neues Spiel</button>
-        </div>
+    <main class="page-main">
+      <section class="page-hero compact">
+        <span class="section-kicker">Play hub</span>
+        <h1>Wähle deinen Spielmodus</h1>
+        <p class="hero-text narrow">
+          Entscheide selbst, wie du spielen willst: gegen zufällige Gegner online,
+          in privaten Rooms mit Freunden, lokal auf einem Gerät oder offline gegen Bots
+          mit mehreren Schwierigkeitsstufen.
+        </p>
       </section>
 
-      <section class="info-panel">
-        <div class="info-card">
-          <span class="label">Modus</span>
-          <span id="modeText" class="value">Local</span>
-        </div>
+      <section class="mode-grid">
+        <article class="mode-card featured">
+          <span class="mode-tag">Online</span>
+          <h2>Quick Match</h2>
+          <p>Finde automatisch einen zufälligen Gegner und starte direkt ein Online-Match.</p>
+          <ul class="mode-list">
+            <li>automatisches Matchmaking</li>
+            <li>kein Room-Code nötig</li>
+            <li>Realtime-Multiplayer</li>
+          </ul>
+          <a href="quickmatch.html" class="primary-btn">Zufälligen Gegner finden</a>
+        </article>
 
-        <div class="info-card">
-          <span class="label">Dein Symbol</span>
-          <span id="playerRoleText" class="value">-</span>
-        </div>
+        <article class="mode-card">
+          <span class="mode-tag">Online</span>
+          <h2>Privates Match</h2>
+          <p>Erstelle einen Room und lade einen Freund per Code oder Join-Link ein.</p>
+          <ul class="mode-list">
+            <li>Room-Code</li>
+            <li>Join-Link</li>
+            <li>Reconnect & Presence</li>
+          </ul>
+          <a href="lobby.html" class="secondary-btn">Zur privaten Lobby</a>
+        </article>
 
-        <div class="info-card">
-          <span class="label">Gegner Status</span>
-          <span id="opponentStatusText" class="value">-</span>
-        </div>
+        <article class="mode-card">
+          <span class="mode-tag">Offline</span>
+          <h2>Lokales Spiel</h2>
+          <p>Spiele direkt auf einem Gerät ohne Online-Verbindung.</p>
+          <ul class="mode-list">
+            <li>lokal spielbar</li>
+            <li>ideal zum Testen</li>
+            <li>kein Internet nötig</li>
+          </ul>
+          <a href="game.html?mode=local" class="secondary-btn">Lokales Spiel starten</a>
+        </article>
 
-        <div class="info-card">
-          <span class="label">Aktueller Spieler</span>
-          <span id="currentPlayer" class="value">X</span>
-        </div>
+        <article class="mode-card">
+          <span class="mode-tag">Bot</span>
+          <h2>Bot - Easy</h2>
+          <p>Ein einfacher Bot für entspannte Runden und zum Einstieg.</p>
+          <ul class="mode-list">
+            <li>leichte Schwierigkeit</li>
+            <li>einfachere Züge</li>
+            <li>gut zum Lernen</li>
+          </ul>
+          <a href="game.html?mode=bot-easy" class="secondary-btn">Easy starten</a>
+        </article>
 
-        <div class="info-card">
-          <span class="label">Nächstes Feld</span>
-          <span id="targetBoard" class="value">Beliebig</span>
-        </div>
+        <article class="mode-card">
+          <span class="mode-tag">Bot</span>
+          <h2>Bot - Medium</h2>
+          <p>Ein etwas stärkerer Bot mit besserer Zugauswahl und mehr Taktik.</p>
+          <ul class="mode-list">
+            <li>solide Schwierigkeit</li>
+            <li>bessere Entscheidungen</li>
+            <li>mehr Druck im Spiel</li>
+          </ul>
+          <a href="game.html?mode=bot-medium" class="secondary-btn">Medium starten</a>
+        </article>
 
-        <div class="info-card">
-          <span class="label">Status</span>
-          <span id="statusText" class="value">Spiel läuft</span>
-        </div>
-
-        <div class="info-card">
-          <span class="label">Room</span>
-          <span id="roomCodeText" class="value">-</span>
-        </div>
-      </section>
-
-      <section class="game-board-section">
-        <div id="ultimateBoard" class="ultimate-board"></div>
+        <article class="mode-card">
+          <span class="mode-tag">Bot</span>
+          <h2>Bot - Hard</h2>
+          <p>Ein stärkerer Bot mit besserer Bewertung von Positionen und Gegenzügen.</p>
+          <ul class="mode-list">
+            <li>schwierigster Bot</li>
+            <li>stärkere Heuristik</li>
+            <li>deutlich fordernder</li>
+          </ul>
+          <a href="game.html?mode=bot-hard" class="secondary-btn">Hard starten</a>
+        </article>
       </section>
     </main>
   </div>
-
-  <script type="module" src="script.js"></script>
 </body>
 </html>
