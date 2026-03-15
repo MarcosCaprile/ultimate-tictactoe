@@ -1,3 +1,11 @@
+import { db } from "./firebase.js";
+import {
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
 const ultimateBoard = document.getElementById("ultimateBoard");
 const currentPlayerEl = document.getElementById("currentPlayer");
 const targetBoardEl = document.getElementById("targetBoard");
@@ -11,28 +19,88 @@ const joinRoomBtn = document.getElementById("joinRoomBtn");
 const roomInput = document.getElementById("roomInput");
 const joinHint = document.getElementById("joinHint");
 
+function generateRoomCode() {
+  const randomPart = Math.floor(1000 + Math.random() * 9000);
+  return `UTTT-${randomPart}`;
+}
+
 if (generatedCodeEl && generateCodeBtn) {
-  generateCodeBtn.addEventListener("click", () => {
-    generatedCodeEl.textContent = generateRoomCode();
+  generateCodeBtn.addEventListener("click", async () => {
+    const roomCode = generateRoomCode();
+    generatedCodeEl.textContent = roomCode;
+
+    try {
+      await createRoom(roomCode);
+      if (joinHint) {
+        joinHint.textContent = `Room ${roomCode} wurde erstellt.`;
+      }
+    } catch (error) {
+      console.error(error);
+      if (joinHint) {
+        joinHint.textContent = "Fehler beim Erstellen des Rooms.";
+      }
+    }
+  });
+}
+
+async function createRoom(roomCode) {
+  await setDoc(doc(db, "games", roomCode), {
+    roomCode,
+    status: "waiting",
+    host: {
+      name: "Player 1",
+      symbol: "X"
+    },
+    guest: null,
+    currentPlayer: "X",
+    nextBoardIndex: null,
+    cellStates: Array.from({ length: 9 }, () => Array(9).fill("")),
+    miniBoardWinners: Array(9).fill(""),
+    winner: "",
+    createdAt: Date.now()
   });
 }
 
 if (joinRoomBtn && roomInput && joinHint) {
-  joinRoomBtn.addEventListener("click", () => {
-    const value = roomInput.value.trim().toUpperCase();
+  joinRoomBtn.addEventListener("click", async () => {
+    const roomCode = roomInput.value.trim().toUpperCase();
 
-    if (!value) {
+    if (!roomCode) {
       joinHint.textContent = "Bitte gib zuerst einen Room-Code ein.";
       return;
     }
 
-    joinHint.textContent = `Demo-Join vorbereitet für Room ${value}. Realtime kommt im nächsten Schritt.`;
-  });
-}
+    try {
+      const gameRef = doc(db, "games", roomCode);
+      const snap = await getDoc(gameRef);
 
-function generateRoomCode() {
-  const randomPart = Math.floor(1000 + Math.random() * 9000);
-  return `UTTT-${randomPart}`;
+      if (!snap.exists()) {
+        joinHint.textContent = "Room nicht gefunden.";
+        return;
+      }
+
+      const game = snap.data();
+
+      if (game.guest) {
+        joinHint.textContent = "Room ist bereits voll.";
+        return;
+      }
+
+      await updateDoc(gameRef, {
+        guest: {
+          name: "Player 2",
+          symbol: "O"
+        },
+        status: "playing"
+      });
+
+      joinHint.textContent = `Room ${roomCode} erfolgreich gejoint.`;
+      window.location.href = `game.html?room=${roomCode}&mode=private-guest`;
+    } catch (error) {
+      console.error(error);
+      joinHint.textContent = "Fehler beim Joinen des Rooms.";
+    }
+  });
 }
 
 if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBtn) {
@@ -60,6 +128,8 @@ if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBt
 
     if (mode === "private-host") {
       modeTextEl.textContent = "Private Host";
+    } else if (mode === "private-guest") {
+      modeTextEl.textContent = "Private Guest";
     } else if (mode === "local") {
       modeTextEl.textContent = "Local";
     } else {
