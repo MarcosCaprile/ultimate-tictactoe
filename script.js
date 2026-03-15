@@ -37,11 +37,28 @@ const WINNING_COMBINATIONS = [
 ];
 
 function createEmptyCellStates() {
-  return Array.from({ length: 9 }, () => Array(9).fill(""));
+  return Array(81).fill("");
 }
 
 function createEmptyMiniWinners() {
   return Array(9).fill("");
+}
+
+function getFlatIndex(boardIndex, cellIndex) {
+  return boardIndex * 9 + cellIndex;
+}
+
+function getCellValue(cellStates, boardIndex, cellIndex) {
+  return cellStates[getFlatIndex(boardIndex, cellIndex)];
+}
+
+function setCellValue(cellStates, boardIndex, cellIndex, value) {
+  cellStates[getFlatIndex(boardIndex, cellIndex)] = value;
+}
+
+function getMiniBoard(cellStates, boardIndex) {
+  const start = boardIndex * 9;
+  return cellStates.slice(start, start + 9);
 }
 
 function generateRoomCode() {
@@ -228,7 +245,7 @@ if (
   }
 
   function isMoveAllowed(boardIndex, cellIndex) {
-    if (cellStates[boardIndex][cellIndex] !== "") return false;
+    if (getCellValue(cellStates, boardIndex, cellIndex) !== "") return false;
     if (miniBoardWinners[boardIndex] !== "") return false;
     if (gameOver) return false;
 
@@ -242,16 +259,17 @@ if (
   }
 
   function buildNextState(boardIndex, cellIndex) {
-    const newCellStates = cellStates.map((board) => [...board]);
+    const newCellStates = [...cellStates];
     const newMiniBoardWinners = [...miniBoardWinners];
 
-    newCellStates[boardIndex][cellIndex] = currentPlayer;
+    setCellValue(newCellStates, boardIndex, cellIndex, currentPlayer);
 
-    const miniWinner = getWinner(newCellStates[boardIndex]);
+    const miniBoard = getMiniBoard(newCellStates, boardIndex);
+    const miniWinner = getWinner(miniBoard);
 
     if (miniWinner) {
       newMiniBoardWinners[boardIndex] = miniWinner;
-    } else if (isBoardFull(newCellStates[boardIndex])) {
+    } else if (isBoardFull(miniBoard)) {
       newMiniBoardWinners[boardIndex] = "draw";
     }
 
@@ -362,7 +380,7 @@ if (
       const cells = miniBoard.querySelectorAll(".cell");
 
       cells.forEach((cell, cellIndex) => {
-        const value = cellStates[boardIndex][cellIndex];
+        const value = getCellValue(cellStates, boardIndex, cellIndex);
         cell.textContent = value;
         cell.classList.remove("x", "o");
 
@@ -395,8 +413,8 @@ if (
   function applySnapshot(game) {
     currentPlayer = game.currentPlayer ?? "X";
     nextBoardIndex = game.nextBoardIndex ?? null;
-    cellStates = game.cellStates ?? createEmptyCellStates();
-    miniBoardWinners = game.miniBoardWinners ?? createEmptyMiniWinners();
+    cellStates = Array.isArray(game.cellStates) ? game.cellStates : createEmptyCellStates();
+    miniBoardWinners = Array.isArray(game.miniBoardWinners) ? game.miniBoardWinners : createEmptyMiniWinners();
     currentGameStatus = game.status ?? "waiting";
 
     if (game.winner === "X" || game.winner === "O") {
