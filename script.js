@@ -12,6 +12,8 @@ import {
 
 const generatedCodeEl = document.getElementById("generatedCode");
 const generateCodeBtn = document.getElementById("generateCodeBtn");
+const copyCodeBtn = document.getElementById("copyCodeBtn");
+const copyJoinLinkBtn = document.getElementById("copyJoinLinkBtn");
 const createHint = document.getElementById("createHint");
 
 const joinRoomBtn = document.getElementById("joinRoomBtn");
@@ -50,6 +52,8 @@ const HEARTBEAT_INTERVAL_MS = 5000;
 const PLAYER_STALE_AFTER_MS = 15000;
 const ROOM_DELETE_AFTER_EMPTY_MS = 25000;
 const FINISHED_ROOM_RETENTION_MS = 5 * 60 * 1000;
+
+const BROWSER_PLAYER_ID_KEY = "uttt-browser-player-id";
 
 let isCreatingRoom = false;
 let isJoiningRoom = false;
@@ -98,6 +102,56 @@ function generateRoomCode() {
   return `${ROOM_CODE_PREFIX}-${randomCodePart(ROOM_CODE_LENGTH)}`;
 }
 
+function randomId() {
+  return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+}
+
+function getBrowserPlayerId() {
+  const existing = localStorage.getItem(BROWSER_PLAYER_ID_KEY);
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = `p-${randomId()}`;
+  localStorage.setItem(BROWSER_PLAYER_ID_KEY, created);
+  return created;
+}
+
+function getRoomMemoryKey(roomCode) {
+  return `uttt-room-memory-${roomCode}`;
+}
+
+function saveRoomMemory(roomCode, role) {
+  const payload = {
+    role,
+    savedAt: nowMs()
+  };
+
+  localStorage.setItem(getRoomMemoryKey(roomCode), JSON.stringify(payload));
+}
+
+function loadRoomMemory(roomCode) {
+  try {
+    const raw = localStorage.getItem(getRoomMemoryKey(roomCode));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearRoomMemory(roomCode) {
+  localStorage.removeItem(getRoomMemoryKey(roomCode));
+}
+
+function getJoinLink(roomCode) {
+  return `${window.location.origin}/lobby.html?join=${encodeURIComponent(roomCode)}`;
+}
+
+async function copyText(value) {
+  await navigator.clipboard.writeText(value);
+}
+
 function getWinner(board) {
   for (const combination of WINNING_COMBINATIONS) {
     const [a, b, c] = combination;
@@ -106,6 +160,16 @@ function getWinner(board) {
     }
   }
   return "";
+}
+
+function findWinningLine(board) {
+  for (const combination of WINNING_COMBINATIONS) {
+    const [a, b, c] = combination;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return combination;
+    }
+  }
+  return null;
 }
 
 function isBoardFull(board) {
@@ -126,6 +190,11 @@ function readGameMode() {
 function readRoomCode() {
   const params = new URLSearchParams(window.location.search);
   return params.get("room");
+}
+
+function readJoinCodeFromLobbyUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("join");
 }
 
 function isPresenceOnline(connected, lastSeen) {
@@ -217,6 +286,9 @@ async function createRoom(roomCode) {
     },
     guest: null,
 
+    hostPlayerId: null,
+    guestPlayerId: null,
+
     hostConnected: false,
     hostLastSeen: null,
     guestConnected: false,
@@ -231,6 +303,16 @@ async function createRoom(roomCode) {
     createdAt: timestamp,
     updatedAt: timestamp
   });
+}
+
+if (roomInput) {
+  const joinCode = readJoinCodeFromLobbyUrl();
+  if (joinCode) {
+    roomInput.value = joinCode.toUpperCase();
+    if (joinHint) {
+      joinHint.textContent = `Join-Link erkannt für ${joinCode.toUpperCase()}.`;
+    }
+  }
 }
 
 if (generateCodeBtn && generatedCodeEl && createHint) {
@@ -249,6 +331,7 @@ if (generateCodeBtn && generatedCodeEl && createHint) {
       createHint.textContent = "Room wird erstellt...";
 
       await createRoom(roomCode);
+      saveRoomMemory(roomCode, "host");
 
       createHint.textContent = `Room ${roomCode} erstellt. Weiterleitung als Host...`;
       window.location.href = `game.html?room=${roomCode}&mode=private-host`;
@@ -257,6 +340,44 @@ if (generateCodeBtn && generatedCodeEl && createHint) {
       createHint.textContent = `Fehler beim Erstellen des Rooms: ${error.message}`;
       generateCodeBtn.disabled = false;
       isCreatingRoom = false;
+    }
+  });
+}
+
+if (copyCodeBtn && generatedCodeEl && createHint) {
+  copyCodeBtn.addEventListener("click", async () => {
+    const roomCode = generatedCodeEl.textContent.trim();
+
+    if (!roomCode || roomCode === "UTTT-000000") {
+      createHint.textContent = "Erstelle zuerst einen Room.";
+      return;
+    }
+
+    try {
+      await copyText(roomCode);
+      createHint.textContent = "Room-Code kopiert.";
+    } catch (error) {
+      console.error(error);
+      createHint.textContent = "Kopieren des Room-Codes fehlgeschlagen.";
+    }
+  });
+}
+
+if (copyJoinLinkBtn && generatedCodeEl && createHint) {
+  copyJoinLinkBtn.addEventListener("click", async () => {
+    const roomCode = generatedCodeEl.textContent.trim();
+
+    if (!roomCode || roomCode === "UTTT-000000") {
+      createHint.textContent = "Erstelle zuerst einen Room.";
+      return;
+    }
+
+    try {
+      await copyText(getJoinLink(roomCode));
+      createHint.textContent = "Join-Link kopiert.";
+    } catch (error) {
+      console.error(error);
+      createHint.textContent = "Kopieren des Join-Links fehlgeschlagen.";
     }
   });
 }
@@ -299,6 +420,15 @@ if (joinRoomBtn && roomInput && joinHint) {
         return;
       }
 
+      const browserPlayerId = getBrowserPlayerId();
+
+      if (game.guestPlayerId === browserPlayerId || game.hostPlayerId === browserPlayerId) {
+        const role = game.hostPlayerId === browserPlayerId ? "host" : "guest";
+        saveRoomMemory(roomCode, role);
+        window.location.href = `game.html?room=${roomCode}&mode=${role === "host" ? "private-host" : "private-guest"}`;
+        return;
+      }
+
       if (game.guest) {
         joinHint.textContent = "Room ist bereits voll.";
         joinRoomBtn.disabled = false;
@@ -311,12 +441,14 @@ if (joinRoomBtn && roomInput && joinHint) {
           name: "Player 2",
           symbol: "O"
         },
+        guestPlayerId: browserPlayerId,
         guestConnected: false,
         guestLastSeen: null,
         status: "playing",
         updatedAt: nowMs()
       });
 
+      saveRoomMemory(roomCode, "guest");
       window.location.href = `game.html?room=${roomCode}&mode=private-guest`;
     } catch (error) {
       console.error("Fehler beim Joinen des Rooms:", error);
@@ -354,6 +486,17 @@ if (
   let roomRef = roomCode ? doc(db, "games", roomCode) : null;
   let heartbeatInterval = null;
   let isLeavingRoom = false;
+  let browserPlayerId = getBrowserPlayerId();
+  let globalWinningLine = null;
+  let globalWinner = "";
+
+  const storedRoomMemory = roomCode ? loadRoomMemory(roomCode) : null;
+
+  if (!mode && storedRoomMemory?.role === "host") {
+    mode = "private-host";
+  } else if (!mode && storedRoomMemory?.role === "guest") {
+    mode = "private-guest";
+  }
 
   function getRolePrefix() {
     return playerSymbol === "X" ? "host" : "guest";
@@ -380,7 +523,7 @@ if (
 
     if (gameSubtitleEl) {
       gameSubtitleEl.textContent = roomCode
-        ? `Verbunden mit Room ${roomCode}. Der Room erkennt jetzt auch, ob Spieler offline gehen.`
+        ? `Verbunden mit Room ${roomCode}. Reloads werden erkannt und Spieler können reconnecten.`
         : "Lokales Spiel ohne Realtime-Room.";
     }
   }
@@ -443,7 +586,8 @@ if (
       return value === "draw" ? "" : value;
     });
 
-    const globalWinner = getWinner(normalizedGlobalBoard);
+    const foundGlobalWinner = getWinner(normalizedGlobalBoard);
+    const foundWinningLine = findWinningLine(normalizedGlobalBoard);
 
     let newGameOver = false;
     let newStatusText = "Spiel läuft";
@@ -452,11 +596,11 @@ if (
     let newNextBoardIndex = cellIndex;
     let newCurrentPlayer = currentPlayer === "X" ? "O" : "X";
 
-    if (globalWinner) {
+    if (foundGlobalWinner) {
       newGameOver = true;
-      newWinner = globalWinner;
+      newWinner = foundGlobalWinner;
       newStatus = "finished";
-      newStatusText = `Spieler ${globalWinner} gewinnt das Spiel!`;
+      newStatusText = `Spieler ${foundGlobalWinner} gewinnt das Spiel!`;
       newNextBoardIndex = null;
       newCurrentPlayer = currentPlayer;
     } else if (newMiniBoardWinners.every((value) => value !== "")) {
@@ -480,8 +624,106 @@ if (
       winner: newWinner,
       status: newStatus,
       statusText: newStatusText,
-      gameOver: newGameOver
+      gameOver: newGameOver,
+      globalWinningLine: foundWinningLine
     };
+  }
+
+  function getLineCoordinates(line) {
+    const centerMap = {
+      0: { x: 16.67, y: 16.67 },
+      1: { x: 50, y: 16.67 },
+      2: { x: 83.33, y: 16.67 },
+      3: { x: 16.67, y: 50 },
+      4: { x: 50, y: 50 },
+      5: { x: 83.33, y: 50 },
+      6: { x: 16.67, y: 83.33 },
+      7: { x: 50, y: 83.33 },
+      8: { x: 83.33, y: 83.33 }
+    };
+
+    const start = centerMap[line[0]];
+    const end = centerMap[line[2]];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+    return {
+      left: start.x,
+      top: start.y,
+      width: length,
+      angle
+    };
+  }
+
+  function getResultOverlayData() {
+    if (!gameOver || !globalWinner) {
+      if (globalWinner === "draw") {
+        return {
+          variant: "draw",
+          title: "Unentschieden",
+          subtitle: "Keiner hat das Match gewonnen."
+        };
+      }
+      return null;
+    }
+
+    if (!isRealtimeGame) {
+      return {
+        variant: "win",
+        title: `Spieler ${globalWinner} gewinnt!`,
+        subtitle: "Das Spiel ist entschieden."
+      };
+    }
+
+    if (globalWinner === playerSymbol) {
+      return {
+        variant: "win",
+        title: "Du gewinnst!",
+        subtitle: "Starker Zug — das Match gehört dir."
+      };
+    }
+
+    return {
+      variant: "loss",
+      title: "Du verlierst!",
+      subtitle: `Spieler ${globalWinner} hat das Match gewonnen.`
+    };
+  }
+
+  function renderGlobalEffects() {
+    const existingLine = ultimateBoard.querySelector(".global-win-line");
+    if (existingLine) existingLine.remove();
+
+    const existingOverlay = ultimateBoard.querySelector(".game-result-overlay");
+    if (existingOverlay) existingOverlay.remove();
+
+    if (globalWinningLine && globalWinner && globalWinner !== "draw") {
+      const coords = getLineCoordinates(globalWinningLine);
+      const line = document.createElement("div");
+      line.className = `global-win-line ${globalWinner.toLowerCase()}`;
+      line.style.left = `${coords.left}%`;
+      line.style.top = `${coords.top}%`;
+      line.style.width = `${coords.width}%`;
+      line.style.transform = `translateY(-50%) rotate(${coords.angle}deg) scaleX(1)`;
+      ultimateBoard.appendChild(line);
+    }
+
+    const overlayData = getResultOverlayData();
+    if (!overlayData) return;
+
+    const overlay = document.createElement("div");
+    overlay.className = `game-result-overlay ${overlayData.variant}`;
+
+    overlay.innerHTML = `
+      <div class="game-result-inner">
+        <div class="game-result-title">${overlayData.title}</div>
+        <div class="game-result-subtitle">${overlayData.subtitle}</div>
+      </div>
+    `;
+
+    ultimateBoard.appendChild(overlay);
   }
 
   async function handleCellClick(event) {
@@ -517,6 +759,8 @@ if (
     nextBoardIndex = nextState.nextBoardIndex;
     gameOver = nextState.gameOver;
     statusTextEl.textContent = nextState.statusText;
+    globalWinner = nextState.winner;
+    globalWinningLine = nextState.globalWinningLine;
 
     render();
   }
@@ -574,6 +818,7 @@ if (
 
     currentPlayerEl.textContent = currentPlayer;
     targetBoardEl.textContent = nextBoardIndex === null ? "Beliebig" : boardName(nextBoardIndex);
+    renderGlobalEffects();
   }
 
   function updateOpponentStatus(game) {
@@ -616,6 +861,10 @@ if (
     cellStates = Array.isArray(game.cellStates) ? game.cellStates : createEmptyCellStates();
     miniBoardWinners = Array.isArray(game.miniBoardWinners) ? game.miniBoardWinners : createEmptyMiniWinners();
     currentGameStatus = game.status ?? "waiting";
+    globalWinner = game.winner ?? "";
+
+    const normalizedGlobalBoard = miniBoardWinners.map((value) => (value === "draw" ? "" : value));
+    globalWinningLine = findWinningLine(normalizedGlobalBoard);
 
     updateOpponentStatus(game);
 
@@ -652,6 +901,7 @@ if (
     const payload = {
       [`${rolePrefix}Connected`]: isConnected,
       [`${rolePrefix}LastSeen`]: nowMs(),
+      [`${rolePrefix}PlayerId`]: browserPlayerId,
       updatedAt: nowMs()
     };
 
@@ -706,6 +956,7 @@ if (
 
     try {
       await updateOwnPresence(false);
+      clearRoomMemory(roomCode);
       await maybeDeleteRoomIfEmpty();
     } catch (error) {
       console.error("Fehler beim Verlassen des Rooms:", error);
@@ -751,20 +1002,92 @@ if (
     gameOver = false;
     cellStates = createEmptyCellStates();
     miniBoardWinners = createEmptyMiniWinners();
+    globalWinner = "";
+    globalWinningLine = null;
     statusTextEl.textContent = "Spiel läuft";
     render();
   }
 
-  function setupRealtimeRoom() {
-    if (!roomRef) return;
+  async function ensureRoleOwnership() {
+    if (!roomRef || !roomCode) return;
 
-    updateOwnPresence(true);
-    startHeartbeat();
+    try {
+      const snapshot = await getDoc(roomRef);
+
+      if (!snapshot.exists()) {
+        statusTextEl.textContent = "Room wurde nicht gefunden.";
+        clearRoomMemory(roomCode);
+        return;
+      }
+
+      const game = snapshot.data();
+      let resolvedRole = mode === "private-host" ? "host" : mode === "private-guest" ? "guest" : storedRoomMemory?.role;
+
+      if (!resolvedRole) {
+        if (game.hostPlayerId === browserPlayerId) {
+          resolvedRole = "host";
+          mode = "private-host";
+        } else if (game.guestPlayerId === browserPlayerId) {
+          resolvedRole = "guest";
+          mode = "private-guest";
+        }
+      }
+
+      if (!resolvedRole) {
+        statusTextEl.textContent = "Dieser Room gehört nicht zu deiner aktuellen Sitzung.";
+        return;
+      }
+
+      if (resolvedRole === "host") {
+        playerSymbol = "X";
+        saveRoomMemory(roomCode, "host");
+
+        await updateDoc(roomRef, {
+          hostPlayerId: browserPlayerId,
+          hostConnected: true,
+          hostLastSeen: nowMs(),
+          updatedAt: nowMs()
+        });
+      } else {
+        playerSymbol = "O";
+        saveRoomMemory(roomCode, "guest");
+
+        const payload = {
+          guestPlayerId: browserPlayerId,
+          guestConnected: true,
+          guestLastSeen: nowMs(),
+          updatedAt: nowMs()
+        };
+
+        if (!game.guest) {
+          payload.guest = {
+            name: "Player 2",
+            symbol: "O"
+          };
+        }
+
+        await updateDoc(roomRef, payload);
+      }
+    } catch (error) {
+      console.error("Fehler bei Reconnect/Ownership:", error);
+      statusTextEl.textContent = "Reconnect fehlgeschlagen.";
+    }
+  }
+
+  function setupRealtimeRoom() {
+    if (!roomRef || !roomCode) return;
+
+    ensureRoleOwnership().then(() => {
+      setModeDisplay();
+      updateOwnPresence(true);
+      startHeartbeat();
+    });
 
     onSnapshot(roomRef, async (snapshot) => {
       if (!snapshot.exists()) {
         statusTextEl.textContent = "Room wurde gelöscht oder nicht gefunden.";
         opponentStatusTextEl.textContent = "-";
+        clearRoomMemory(roomCode);
         return;
       }
 
@@ -774,6 +1097,7 @@ if (
         try {
           await deleteDoc(roomRef);
           statusTextEl.textContent = "Room war inaktiv und wurde gelöscht.";
+          clearRoomMemory(roomCode);
         } catch (error) {
           console.error("Fehler beim Löschen eines inaktiven Rooms:", error);
         }

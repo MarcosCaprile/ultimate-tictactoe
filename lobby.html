@@ -22,8 +22,7 @@
         <span class="section-kicker">Private lobby</span>
         <h1>Erstelle oder joine einen Room</h1>
         <p class="hero-text narrow">
-          Diese Seite erstellt echte Rooms in Firestore. Sobald zwei Spieler verbunden sind,
-          spielen beide im selben Match.
+          Sichere Room-Codes, Join-Link, Reconnect-Grundlage und klare Gegner-Statusanzeige.
         </p>
       </section>
 
@@ -34,11 +33,13 @@
 
           <div class="room-code-box">
             <span class="room-label">Room-Code</span>
-            <span class="room-code" id="generatedCode">UTTT-0000</span>
+            <span class="room-code" id="generatedCode">UTTT-000000</span>
           </div>
 
           <div class="stack-actions">
             <button class="primary-btn" id="generateCodeBtn" type="button">Room erstellen & als Host starten</button>
+            <button class="secondary-btn" id="copyCodeBtn" type="button">Code kopieren</button>
+            <button class="secondary-btn" id="copyJoinLinkBtn" type="button">Join-Link kopieren</button>
           </div>
 
           <span class="join-hint" id="createHint">Noch kein Room erstellt.</span>
@@ -49,7 +50,7 @@
           <p>Gib einen existierenden Code ein, um demselben Spiel wie dein Freund beizutreten.</p>
 
           <label class="input-label" for="roomInput">Room-Code</label>
-          <input id="roomInput" class="room-input" type="text" placeholder="z. B. UTTT-4821" />
+          <input id="roomInput" class="room-input" type="text" placeholder="z. B. UTTT-A6K3P9" />
 
           <div class="stack-actions">
             <button class="primary-btn" id="joinRoomBtn" type="button">Room beitreten</button>
