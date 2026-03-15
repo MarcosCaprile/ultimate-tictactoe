@@ -22,14 +22,14 @@
         <span class="section-kicker">Private lobby</span>
         <h1>Erstelle oder joine einen Room</h1>
         <p class="hero-text narrow">
-          Sichere Room-Codes, Join-Link, Reconnect-Grundlage und klare Gegner-Statusanzeige.
+          Sichere Room-Tokens, direkter Join und klare Trennung zwischen Host und Gast.
         </p>
       </section>
 
       <section class="lobby-grid">
         <article class="lobby-card">
           <h2>Room erstellen</h2>
-          <p>Erzeuge einen Code, teile ihn mit einem Freund und gehe als Host direkt ins Match.</p>
+          <p>Erzeuge einen neuen Room und starte direkt als Host ins Match.</p>
 
           <div class="room-code-box">
             <span class="room-label">Room-Code</span>
@@ -38,8 +38,6 @@
 
           <div class="stack-actions">
             <button class="primary-btn" id="generateCodeBtn" type="button">Room erstellen & als Host starten</button>
-            <button class="secondary-btn" id="copyCodeBtn" type="button">Code kopieren</button>
-            <button class="secondary-btn" id="copyJoinLinkBtn" type="button">Join-Link kopieren</button>
           </div>
 
           <span class="join-hint" id="createHint">Noch kein Room erstellt.</span>
@@ -47,7 +45,7 @@
 
         <article class="lobby-card">
           <h2>Room beitreten</h2>
-          <p>Gib einen existierenden Code ein, um demselben Spiel wie dein Freund beizutreten.</p>
+          <p>Gib einen existierenden Code ein und trete als zweiter Spieler bei.</p>
 
           <label class="input-label" for="roomInput">Room-Code</label>
           <input id="roomInput" class="room-input" type="text" placeholder="z. B. UTTT-A6K3P9" />

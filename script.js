@@ -12,8 +12,6 @@ import {
 
 const generatedCodeEl = document.getElementById("generatedCode");
 const generateCodeBtn = document.getElementById("generateCodeBtn");
-const copyCodeBtn = document.getElementById("copyCodeBtn");
-const copyJoinLinkBtn = document.getElementById("copyJoinLinkBtn");
 const createHint = document.getElementById("createHint");
 
 const joinRoomBtn = document.getElementById("joinRoomBtn");
@@ -26,6 +24,8 @@ const targetBoardEl = document.getElementById("targetBoard");
 const statusTextEl = document.getElementById("statusText");
 const resetBtn = document.getElementById("resetBtn");
 const leaveRoomBtn = document.getElementById("leaveRoomBtn");
+const copyRoomCodeBtn = document.getElementById("copyRoomCodeBtn");
+const copyJoinLinkBtn = document.getElementById("copyJoinLinkBtn");
 const modeTextEl = document.getElementById("modeText");
 const roomCodeTextEl = document.getElementById("roomCodeText");
 const playerRoleTextEl = document.getElementById("playerRoleText");
@@ -52,8 +52,6 @@ const HEARTBEAT_INTERVAL_MS = 5000;
 const PLAYER_STALE_AFTER_MS = 15000;
 const ROOM_DELETE_AFTER_EMPTY_MS = 25000;
 const FINISHED_ROOM_RETENTION_MS = 5 * 60 * 1000;
-
-const BROWSER_PLAYER_ID_KEY = "uttt-browser-player-id";
 
 let isCreatingRoom = false;
 let isJoiningRoom = false;
@@ -98,58 +96,12 @@ function randomCodePart(length) {
   return result;
 }
 
+function randomToken() {
+  return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+}
+
 function generateRoomCode() {
   return `${ROOM_CODE_PREFIX}-${randomCodePart(ROOM_CODE_LENGTH)}`;
-}
-
-function randomId() {
-  return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-}
-
-function getBrowserPlayerId() {
-  const existing = localStorage.getItem(BROWSER_PLAYER_ID_KEY);
-
-  if (existing) {
-    return existing;
-  }
-
-  const created = `p-${randomId()}`;
-  localStorage.setItem(BROWSER_PLAYER_ID_KEY, created);
-  return created;
-}
-
-function getRoomMemoryKey(roomCode) {
-  return `uttt-room-memory-${roomCode}`;
-}
-
-function saveRoomMemory(roomCode, role) {
-  const payload = {
-    role,
-    savedAt: nowMs()
-  };
-
-  localStorage.setItem(getRoomMemoryKey(roomCode), JSON.stringify(payload));
-}
-
-function loadRoomMemory(roomCode) {
-  try {
-    const raw = localStorage.getItem(getRoomMemoryKey(roomCode));
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function clearRoomMemory(roomCode) {
-  localStorage.removeItem(getRoomMemoryKey(roomCode));
-}
-
-function getJoinLink(roomCode) {
-  return `${window.location.origin}/lobby.html?join=${encodeURIComponent(roomCode)}`;
-}
-
-async function copyText(value) {
-  await navigator.clipboard.writeText(value);
 }
 
 function getWinner(board) {
@@ -190,6 +142,11 @@ function readGameMode() {
 function readRoomCode() {
   const params = new URLSearchParams(window.location.search);
   return params.get("room");
+}
+
+function readAuthToken() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("auth");
 }
 
 function readJoinCodeFromLobbyUrl() {
@@ -267,6 +224,18 @@ async function generateUniqueRoomCode() {
   throw new Error("Es konnte kein freier Room-Code erzeugt werden. Bitte versuche es erneut.");
 }
 
+function buildHostGameUrl(roomCode, hostToken) {
+  return `game.html?room=${encodeURIComponent(roomCode)}&mode=private-host&auth=${encodeURIComponent(hostToken)}`;
+}
+
+function buildGuestGameUrl(roomCode, joinToken) {
+  return `game.html?room=${encodeURIComponent(roomCode)}&mode=private-guest&auth=${encodeURIComponent(joinToken)}`;
+}
+
+function buildJoinLink(roomCode, joinToken) {
+  return `${window.location.origin}/game.html?room=${encodeURIComponent(roomCode)}&mode=private-guest&auth=${encodeURIComponent(joinToken)}`;
+}
+
 async function createRoom(roomCode) {
   const roomRef = doc(db, "games", roomCode);
   const existingSnapshot = await getDoc(roomRef);
@@ -276,6 +245,8 @@ async function createRoom(roomCode) {
   }
 
   const timestamp = nowMs();
+  const hostToken = `host-${randomToken()}`;
+  const joinToken = `join-${randomToken()}`;
 
   await setDoc(roomRef, {
     roomCode,
@@ -286,8 +257,8 @@ async function createRoom(roomCode) {
     },
     guest: null,
 
-    hostPlayerId: null,
-    guestPlayerId: null,
+    hostToken,
+    joinToken,
 
     hostConnected: false,
     hostLastSeen: null,
@@ -303,6 +274,8 @@ async function createRoom(roomCode) {
     createdAt: timestamp,
     updatedAt: timestamp
   });
+
+  return { hostToken, joinToken };
 }
 
 if (roomInput) {
@@ -330,54 +303,15 @@ if (generateCodeBtn && generatedCodeEl && createHint) {
       generatedCodeEl.textContent = roomCode;
       createHint.textContent = "Room wird erstellt...";
 
-      await createRoom(roomCode);
-      saveRoomMemory(roomCode, "host");
+      const { hostToken } = await createRoom(roomCode);
 
       createHint.textContent = `Room ${roomCode} erstellt. Weiterleitung als Host...`;
-      window.location.href = `game.html?room=${roomCode}&mode=private-host`;
+      window.location.href = buildHostGameUrl(roomCode, hostToken);
     } catch (error) {
       console.error("Fehler beim Erstellen des Rooms:", error);
       createHint.textContent = `Fehler beim Erstellen des Rooms: ${error.message}`;
       generateCodeBtn.disabled = false;
       isCreatingRoom = false;
-    }
-  });
-}
-
-if (copyCodeBtn && generatedCodeEl && createHint) {
-  copyCodeBtn.addEventListener("click", async () => {
-    const roomCode = generatedCodeEl.textContent.trim();
-
-    if (!roomCode || roomCode === "UTTT-000000") {
-      createHint.textContent = "Erstelle zuerst einen Room.";
-      return;
-    }
-
-    try {
-      await copyText(roomCode);
-      createHint.textContent = "Room-Code kopiert.";
-    } catch (error) {
-      console.error(error);
-      createHint.textContent = "Kopieren des Room-Codes fehlgeschlagen.";
-    }
-  });
-}
-
-if (copyJoinLinkBtn && generatedCodeEl && createHint) {
-  copyJoinLinkBtn.addEventListener("click", async () => {
-    const roomCode = generatedCodeEl.textContent.trim();
-
-    if (!roomCode || roomCode === "UTTT-000000") {
-      createHint.textContent = "Erstelle zuerst einen Room.";
-      return;
-    }
-
-    try {
-      await copyText(getJoinLink(roomCode));
-      createHint.textContent = "Join-Link kopiert.";
-    } catch (error) {
-      console.error(error);
-      createHint.textContent = "Kopieren des Join-Links fehlgeschlagen.";
     }
   });
 }
@@ -420,12 +354,10 @@ if (joinRoomBtn && roomInput && joinHint) {
         return;
       }
 
-      const browserPlayerId = getBrowserPlayerId();
-
-      if (game.guestPlayerId === browserPlayerId || game.hostPlayerId === browserPlayerId) {
-        const role = game.hostPlayerId === browserPlayerId ? "host" : "guest";
-        saveRoomMemory(roomCode, role);
-        window.location.href = `game.html?room=${roomCode}&mode=${role === "host" ? "private-host" : "private-guest"}`;
+      if (!game.joinToken) {
+        joinHint.textContent = "Dieser Room ist ungültig.";
+        joinRoomBtn.disabled = false;
+        isJoiningRoom = false;
         return;
       }
 
@@ -441,15 +373,13 @@ if (joinRoomBtn && roomInput && joinHint) {
           name: "Player 2",
           symbol: "O"
         },
-        guestPlayerId: browserPlayerId,
         guestConnected: false,
         guestLastSeen: null,
         status: "playing",
         updatedAt: nowMs()
       });
 
-      saveRoomMemory(roomCode, "guest");
-      window.location.href = `game.html?room=${roomCode}&mode=private-guest`;
+      window.location.href = buildGuestGameUrl(roomCode, game.joinToken);
     } catch (error) {
       console.error("Fehler beim Joinen des Rooms:", error);
       joinHint.textContent = `Fehler beim Joinen des Rooms: ${error.message}`;
@@ -477,26 +407,19 @@ if (
   let cellStates = createEmptyCellStates();
   let miniBoardWinners = createEmptyMiniWinners();
 
-  let roomCode = readRoomCode();
+  const roomCode = readRoomCode();
+  const authToken = readAuthToken();
   let mode = readGameMode();
   let playerSymbol = "X";
-  let isRealtimeGame = Boolean(roomCode);
+  const isRealtimeGame = Boolean(roomCode);
   let currentGameStatus = "waiting";
   let opponentOnline = false;
-  let roomRef = roomCode ? doc(db, "games", roomCode) : null;
+  const roomRef = roomCode ? doc(db, "games", roomCode) : null;
   let heartbeatInterval = null;
   let isLeavingRoom = false;
-  let browserPlayerId = getBrowserPlayerId();
   let globalWinningLine = null;
   let globalWinner = "";
-
-  const storedRoomMemory = roomCode ? loadRoomMemory(roomCode) : null;
-
-  if (!mode && storedRoomMemory?.role === "host") {
-    mode = "private-host";
-  } else if (!mode && storedRoomMemory?.role === "guest") {
-    mode = "private-guest";
-  }
+  let roomJoinToken = null;
 
   function getRolePrefix() {
     return playerSymbol === "X" ? "host" : "guest";
@@ -523,7 +446,7 @@ if (
 
     if (gameSubtitleEl) {
       gameSubtitleEl.textContent = roomCode
-        ? `Verbunden mit Room ${roomCode}. Reloads werden erkannt und Spieler können reconnecten.`
+        ? `Verbunden mit Room ${roomCode}. Rollen werden jetzt eindeutig per Token erkannt.`
         : "Lokales Spiel ohne Realtime-Room.";
     }
   }
@@ -862,6 +785,7 @@ if (
     miniBoardWinners = Array.isArray(game.miniBoardWinners) ? game.miniBoardWinners : createEmptyMiniWinners();
     currentGameStatus = game.status ?? "waiting";
     globalWinner = game.winner ?? "";
+    roomJoinToken = game.joinToken ?? null;
 
     const normalizedGlobalBoard = miniBoardWinners.map((value) => (value === "draw" ? "" : value));
     globalWinningLine = findWinningLine(normalizedGlobalBoard);
@@ -901,7 +825,6 @@ if (
     const payload = {
       [`${rolePrefix}Connected`]: isConnected,
       [`${rolePrefix}LastSeen`]: nowMs(),
-      [`${rolePrefix}PlayerId`]: browserPlayerId,
       updatedAt: nowMs()
     };
 
@@ -956,7 +879,6 @@ if (
 
     try {
       await updateOwnPresence(false);
-      clearRoomMemory(roomCode);
       await maybeDeleteRoomIfEmpty();
     } catch (error) {
       console.error("Fehler beim Verlassen des Rooms:", error);
@@ -1008,52 +930,44 @@ if (
     render();
   }
 
-  async function ensureRoleOwnership() {
-    if (!roomRef || !roomCode) return;
+  async function ensureTokenOwnership() {
+    if (!roomRef || !roomCode) return false;
 
     try {
       const snapshot = await getDoc(roomRef);
 
       if (!snapshot.exists()) {
         statusTextEl.textContent = "Room wurde nicht gefunden.";
-        clearRoomMemory(roomCode);
-        return;
+        return false;
       }
 
       const game = snapshot.data();
-      let resolvedRole = mode === "private-host" ? "host" : mode === "private-guest" ? "guest" : storedRoomMemory?.role;
 
-      if (!resolvedRole) {
-        if (game.hostPlayerId === browserPlayerId) {
-          resolvedRole = "host";
-          mode = "private-host";
-        } else if (game.guestPlayerId === browserPlayerId) {
-          resolvedRole = "guest";
-          mode = "private-guest";
-        }
+      roomJoinToken = game.joinToken ?? null;
+
+      if (!authToken) {
+        statusTextEl.textContent = "Kein gültiger Room-Zugang gefunden.";
+        return false;
       }
 
-      if (!resolvedRole) {
-        statusTextEl.textContent = "Dieser Room gehört nicht zu deiner aktuellen Sitzung.";
-        return;
-      }
-
-      if (resolvedRole === "host") {
+      if (authToken === game.hostToken) {
+        mode = "private-host";
         playerSymbol = "X";
-        saveRoomMemory(roomCode, "host");
 
         await updateDoc(roomRef, {
-          hostPlayerId: browserPlayerId,
           hostConnected: true,
           hostLastSeen: nowMs(),
           updatedAt: nowMs()
         });
-      } else {
+
+        return true;
+      }
+
+      if (authToken === game.joinToken) {
+        mode = "private-guest";
         playerSymbol = "O";
-        saveRoomMemory(roomCode, "guest");
 
         const payload = {
-          guestPlayerId: browserPlayerId,
           guestConnected: true,
           guestLastSeen: nowMs(),
           updatedAt: nowMs()
@@ -1066,18 +980,29 @@ if (
           };
         }
 
+        if (game.status === "waiting") {
+          payload.status = "playing";
+        }
+
         await updateDoc(roomRef, payload);
+        return true;
       }
+
+      statusTextEl.textContent = "Ungültiger Zugangslink für diesen Room.";
+      return false;
     } catch (error) {
-      console.error("Fehler bei Reconnect/Ownership:", error);
+      console.error("Fehler bei Token-Ownership:", error);
       statusTextEl.textContent = "Reconnect fehlgeschlagen.";
+      return false;
     }
   }
 
   function setupRealtimeRoom() {
     if (!roomRef || !roomCode) return;
 
-    ensureRoleOwnership().then(() => {
+    ensureTokenOwnership().then((allowed) => {
+      if (!allowed) return;
+
       setModeDisplay();
       updateOwnPresence(true);
       startHeartbeat();
@@ -1087,7 +1012,6 @@ if (
       if (!snapshot.exists()) {
         statusTextEl.textContent = "Room wurde gelöscht oder nicht gefunden.";
         opponentStatusTextEl.textContent = "-";
-        clearRoomMemory(roomCode);
         return;
       }
 
@@ -1097,7 +1021,6 @@ if (
         try {
           await deleteDoc(roomRef);
           statusTextEl.textContent = "Room war inaktiv und wurde gelöscht.";
-          clearRoomMemory(roomCode);
         } catch (error) {
           console.error("Fehler beim Löschen eines inaktiven Rooms:", error);
         }
@@ -1109,6 +1032,40 @@ if (
 
     window.addEventListener("pagehide", handleBestEffortLeave);
     window.addEventListener("beforeunload", handleBestEffortLeave);
+  }
+
+  if (copyRoomCodeBtn) {
+    copyRoomCodeBtn.addEventListener("click", async () => {
+      if (!roomCode) {
+        statusTextEl.textContent = "Kein Room-Code vorhanden.";
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(roomCode);
+        statusTextEl.textContent = "Room-Code kopiert.";
+      } catch (error) {
+        console.error(error);
+        statusTextEl.textContent = "Kopieren des Room-Codes fehlgeschlagen.";
+      }
+    });
+  }
+
+  if (copyJoinLinkBtn) {
+    copyJoinLinkBtn.addEventListener("click", async () => {
+      if (!roomCode || !roomJoinToken) {
+        statusTextEl.textContent = "Join-Link noch nicht verfügbar.";
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(buildJoinLink(roomCode, roomJoinToken));
+        statusTextEl.textContent = "Join-Link kopiert.";
+      } catch (error) {
+        console.error(error);
+        statusTextEl.textContent = "Kopieren des Join-Links fehlgeschlagen.";
+      }
+    });
   }
 
   resetBtn.addEventListener("click", resetGame);
