@@ -23,7 +23,9 @@
         <div>
           <span class="section-kicker">Game board</span>
           <h1>Ultimate Tic Tac Toe</h1>
-          <p class="subtitle">Spielbares Board mit lokaler Logik und Modus-Anzeige.</p>
+          <p class="subtitle" id="gameSubtitle">
+            Spielbares Board mit lokaler Logik und Realtime-Room-Unterstützung.
+          </p>
         </div>
 
         <div class="game-actions">
@@ -39,6 +41,11 @@
         </div>
 
         <div class="info-card">
+          <span class="label">Dein Symbol</span>
+          <span id="playerRoleText" class="value">-</span>
+        </div>
+
+        <div class="info-card">
           <span class="label">Aktueller Spieler</span>
           <span id="currentPlayer" class="value">X</span>
         </div>
@@ -51,6 +58,11 @@
         <div class="info-card">
           <span class="label">Status</span>
           <span id="statusText" class="value">Spiel läuft</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Room</span>
+          <span id="roomCodeText" class="value">-</span>
         </div>
       </section>
 

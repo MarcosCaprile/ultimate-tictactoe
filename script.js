@@ -3,8 +3,18 @@ import {
   doc,
   setDoc,
   getDoc,
-  updateDoc
+  updateDoc,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const generatedCodeEl = document.getElementById("generatedCode");
+const generateCodeBtn = document.getElementById("generateCodeBtn");
+const hostRoomLink = document.getElementById("hostRoomLink");
+const createHint = document.getElementById("createHint");
+
+const joinRoomBtn = document.getElementById("joinRoomBtn");
+const roomInput = document.getElementById("roomInput");
+const joinHint = document.getElementById("joinHint");
 
 const ultimateBoard = document.getElementById("ultimateBoard");
 const currentPlayerEl = document.getElementById("currentPlayer");
@@ -12,35 +22,62 @@ const targetBoardEl = document.getElementById("targetBoard");
 const statusTextEl = document.getElementById("statusText");
 const resetBtn = document.getElementById("resetBtn");
 const modeTextEl = document.getElementById("modeText");
+const roomCodeTextEl = document.getElementById("roomCodeText");
+const playerRoleTextEl = document.getElementById("playerRoleText");
+const gameSubtitleEl = document.getElementById("gameSubtitle");
 
-const generatedCodeEl = document.getElementById("generatedCode");
-const generateCodeBtn = document.getElementById("generateCodeBtn");
-const joinRoomBtn = document.getElementById("joinRoomBtn");
-const roomInput = document.getElementById("roomInput");
-const joinHint = document.getElementById("joinHint");
+const WINNING_COMBINATIONS = [
+  [0, 1, 2],
+  [3, 4, 5],
+  [6, 7, 8],
+  [0, 3, 6],
+  [1, 4, 7],
+  [2, 5, 8],
+  [0, 4, 8],
+  [2, 4, 6]
+];
+
+function createEmptyCellStates() {
+  return Array.from({ length: 9 }, () => Array(9).fill(""));
+}
+
+function createEmptyMiniWinners() {
+  return Array(9).fill("");
+}
 
 function generateRoomCode() {
   const randomPart = Math.floor(1000 + Math.random() * 9000);
   return `UTTT-${randomPart}`;
 }
 
-if (generatedCodeEl && generateCodeBtn) {
-  generateCodeBtn.addEventListener("click", async () => {
-    const roomCode = generateRoomCode();
-    generatedCodeEl.textContent = roomCode;
-
-    try {
-      await createRoom(roomCode);
-      if (joinHint) {
-        joinHint.textContent = `Room ${roomCode} wurde erstellt.`;
-      }
-    } catch (error) {
-      console.error(error);
-      if (joinHint) {
-        joinHint.textContent = "Fehler beim Erstellen des Rooms.";
-      }
+function getWinner(board) {
+  for (const combination of WINNING_COMBINATIONS) {
+    const [a, b, c] = combination;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return board[a];
     }
-  });
+  }
+  return "";
+}
+
+function isBoardFull(board) {
+  return board.every((cell) => cell !== "");
+}
+
+function boardName(index) {
+  const row = Math.floor(index / 3) + 1;
+  const col = (index % 3) + 1;
+  return `Reihe ${row}, Spalte ${col}`;
+}
+
+function readGameMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("mode");
+}
+
+function readRoomCode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("room");
 }
 
 async function createRoom(roomCode) {
@@ -54,10 +91,26 @@ async function createRoom(roomCode) {
     guest: null,
     currentPlayer: "X",
     nextBoardIndex: null,
-    cellStates: Array.from({ length: 9 }, () => Array(9).fill("")),
-    miniBoardWinners: Array(9).fill(""),
+    cellStates: createEmptyCellStates(),
+    miniBoardWinners: createEmptyMiniWinners(),
     winner: "",
     createdAt: Date.now()
+  });
+}
+
+if (generateCodeBtn && generatedCodeEl && hostRoomLink && createHint) {
+  generateCodeBtn.addEventListener("click", async () => {
+    const roomCode = generateRoomCode();
+    generatedCodeEl.textContent = roomCode;
+
+    try {
+      await createRoom(roomCode);
+      hostRoomLink.href = `game.html?room=${roomCode}&mode=private-host`;
+      createHint.textContent = `Room ${roomCode} erstellt. Du kannst jetzt als Host ins Spiel gehen.`;
+    } catch (error) {
+      console.error(error);
+      createHint.textContent = "Fehler beim Erstellen des Rooms.";
+    }
   });
 }
 
@@ -94,7 +147,6 @@ if (joinRoomBtn && roomInput && joinHint) {
         status: "playing"
       });
 
-      joinHint.textContent = `Room ${roomCode} erfolgreich gejoint.`;
       window.location.href = `game.html?room=${roomCode}&mode=private-guest`;
     } catch (error) {
       console.error(error);
@@ -103,37 +155,51 @@ if (joinRoomBtn && roomInput && joinHint) {
   });
 }
 
-if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBtn) {
-  const WINNING_COMBINATIONS = [
-    [0, 1, 2],
-    [3, 4, 5],
-    [6, 7, 8],
-    [0, 3, 6],
-    [1, 4, 7],
-    [2, 5, 8],
-    [0, 4, 8],
-    [2, 4, 6]
-  ];
-
+if (
+  ultimateBoard &&
+  currentPlayerEl &&
+  targetBoardEl &&
+  statusTextEl &&
+  resetBtn &&
+  modeTextEl &&
+  roomCodeTextEl &&
+  playerRoleTextEl
+) {
   let currentPlayer = "X";
   let nextBoardIndex = null;
   let gameOver = false;
 
-  let cellStates = Array.from({ length: 9 }, () => Array(9).fill(""));
-  let miniBoardWinners = Array(9).fill("");
+  let cellStates = createEmptyCellStates();
+  let miniBoardWinners = createEmptyMiniWinners();
 
-  if (modeTextEl) {
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get("mode");
+  let roomCode = readRoomCode();
+  let mode = readGameMode();
+  let playerSymbol = "X";
+  let isRealtimeGame = Boolean(roomCode);
+  let currentGameStatus = "waiting";
 
+  function setModeDisplay() {
     if (mode === "private-host") {
       modeTextEl.textContent = "Private Host";
+      playerSymbol = "X";
     } else if (mode === "private-guest") {
       modeTextEl.textContent = "Private Guest";
+      playerSymbol = "O";
     } else if (mode === "local") {
       modeTextEl.textContent = "Local";
+      playerSymbol = "X";
     } else {
-      modeTextEl.textContent = "Standard";
+      modeTextEl.textContent = isRealtimeGame ? "Private Match" : "Standard";
+      playerSymbol = "X";
+    }
+
+    playerRoleTextEl.textContent = playerSymbol;
+    roomCodeTextEl.textContent = roomCode ? roomCode : "-";
+
+    if (gameSubtitleEl) {
+      gameSubtitleEl.textContent = roomCode
+        ? `Verbunden mit Room ${roomCode}. Änderungen werden live synchronisiert.`
+        : "Lokales Spiel ohne Realtime-Room.";
     }
   }
 
@@ -161,71 +227,115 @@ if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBt
     render();
   }
 
-  function handleCellClick(event) {
-    if (gameOver) return;
+  function isMoveAllowed(boardIndex, cellIndex) {
+    if (cellStates[boardIndex][cellIndex] !== "") return false;
+    if (miniBoardWinners[boardIndex] !== "") return false;
 
+    if (gameOver) return false;
+
+    if (isRealtimeGame) {
+      if (currentGameStatus !== "playing") return false;
+      if (currentPlayer !== playerSymbol) return false;
+    }
+
+    if (nextBoardIndex === null) return true;
+    return boardIndex === nextBoardIndex;
+  }
+
+  function buildNextState(boardIndex, cellIndex) {
+    const newCellStates = cellStates.map((board) => [...board]);
+    const newMiniBoardWinners = [...miniBoardWinners];
+
+    newCellStates[boardIndex][cellIndex] = currentPlayer;
+
+    const miniWinner = getWinner(newCellStates[boardIndex]);
+
+    if (miniWinner) {
+      newMiniBoardWinners[boardIndex] = miniWinner;
+    } else if (isBoardFull(newCellStates[boardIndex])) {
+      newMiniBoardWinners[boardIndex] = "draw";
+    }
+
+    const normalizedGlobalBoard = newMiniBoardWinners.map((value) => {
+      return value === "draw" ? "" : value;
+    });
+
+    const globalWinner = getWinner(normalizedGlobalBoard);
+
+    let newGameOver = false;
+    let newStatusText = "Spiel läuft";
+    let newStatus = "playing";
+    let newWinner = "";
+    let newNextBoardIndex = cellIndex;
+    let newCurrentPlayer = currentPlayer === "X" ? "O" : "X";
+
+    if (globalWinner) {
+      newGameOver = true;
+      newWinner = globalWinner;
+      newStatus = "finished";
+      newStatusText = `Spieler ${globalWinner} gewinnt das Spiel!`;
+      newNextBoardIndex = null;
+      newCurrentPlayer = currentPlayer;
+    } else if (newMiniBoardWinners.every((value) => value !== "")) {
+      newGameOver = true;
+      newWinner = "draw";
+      newStatus = "finished";
+      newStatusText = "Unentschieden!";
+      newNextBoardIndex = null;
+      newCurrentPlayer = currentPlayer;
+    } else {
+      if (newMiniBoardWinners[newNextBoardIndex] !== "") {
+        newNextBoardIndex = null;
+      }
+    }
+
+    return {
+      cellStates: newCellStates,
+      miniBoardWinners: newMiniBoardWinners,
+      currentPlayer: newCurrentPlayer,
+      nextBoardIndex: newNextBoardIndex,
+      winner: newWinner,
+      status: newStatus,
+      statusText: newStatusText,
+      gameOver: newGameOver
+    };
+  }
+
+  async function handleCellClick(event) {
     const target = event.currentTarget;
     const boardIndex = Number(target.dataset.boardIndex);
     const cellIndex = Number(target.dataset.cellIndex);
 
     if (!isMoveAllowed(boardIndex, cellIndex)) return;
 
-    cellStates[boardIndex][cellIndex] = currentPlayer;
+    const nextState = buildNextState(boardIndex, cellIndex);
 
-    const miniWinner = getWinner(cellStates[boardIndex]);
-
-    if (miniWinner) {
-      miniBoardWinners[boardIndex] = miniWinner;
-    } else if (isBoardFull(cellStates[boardIndex])) {
-      miniBoardWinners[boardIndex] = "draw";
-    }
-
-    const normalizedGlobalBoard = miniBoardWinners.map((value) => {
-      return value === "draw" ? "" : value;
-    });
-
-    const globalWinner = getWinner(normalizedGlobalBoard);
-
-    if (globalWinner) {
-      gameOver = true;
-      statusTextEl.textContent = `Spieler ${globalWinner} gewinnt das Spiel!`;
-    } else if (miniBoardWinners.every((value) => value !== "")) {
-      gameOver = true;
-      statusTextEl.textContent = "Unentschieden!";
-    } else {
-      nextBoardIndex = cellIndex;
-
-      if (miniBoardWinners[nextBoardIndex] !== "") {
-        nextBoardIndex = null;
+    if (isRealtimeGame && roomCode) {
+      try {
+        const gameRef = doc(db, "games", roomCode);
+        await updateDoc(gameRef, {
+          cellStates: nextState.cellStates,
+          miniBoardWinners: nextState.miniBoardWinners,
+          currentPlayer: nextState.currentPlayer,
+          nextBoardIndex: nextState.nextBoardIndex,
+          winner: nextState.winner,
+          status: nextState.status
+        });
+      } catch (error) {
+        console.error(error);
+        statusTextEl.textContent = "Fehler beim Synchronisieren des Zuges.";
       }
-
-      currentPlayer = currentPlayer === "X" ? "O" : "X";
-      statusTextEl.textContent = "Spiel läuft";
+      return;
     }
+
+    cellStates = nextState.cellStates;
+    miniBoardWinners = nextState.miniBoardWinners;
+    currentPlayer = nextState.currentPlayer;
+    nextBoardIndex = nextState.nextBoardIndex;
+    gameOver = nextState.gameOver;
+    statusTextEl.textContent = nextState.statusText;
 
     render();
-  }
-
-  function isMoveAllowed(boardIndex, cellIndex) {
-    if (cellStates[boardIndex][cellIndex] !== "") return false;
-    if (miniBoardWinners[boardIndex] !== "") return false;
-
-    if (nextBoardIndex === null) return true;
-    return boardIndex === nextBoardIndex;
-  }
-
-  function getWinner(board) {
-    for (const combination of WINNING_COMBINATIONS) {
-      const [a, b, c] = combination;
-      if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-        return board[a];
-      }
-    }
-    return "";
-  }
-
-  function isBoardFull(board) {
-    return board.every((cell) => cell !== "");
   }
 
   function render() {
@@ -260,7 +370,7 @@ if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBt
         if (value === "X") cell.classList.add("x");
         if (value === "O") cell.classList.add("o");
 
-        cell.disabled = gameOver || !isMoveAllowed(boardIndex, cellIndex);
+        cell.disabled = !isMoveAllowed(boardIndex, cellIndex);
       });
 
       const existingOverlay = miniBoard.querySelector(".board-overlay");
@@ -283,23 +393,110 @@ if (ultimateBoard && currentPlayerEl && targetBoardEl && statusTextEl && resetBt
     targetBoardEl.textContent = nextBoardIndex === null ? "Beliebig" : boardName(nextBoardIndex);
   }
 
-  function boardName(index) {
-    const row = Math.floor(index / 3) + 1;
-    const col = (index % 3) + 1;
-    return `Reihe ${row}, Spalte ${col}`;
+  function applySnapshot(game) {
+    currentPlayer = game.currentPlayer ?? "X";
+    nextBoardIndex = game.nextBoardIndex ?? null;
+    cellStates = game.cellStates ?? createEmptyCellStates();
+    miniBoardWinners = game.miniBoardWinners ?? createEmptyMiniWinners();
+    currentGameStatus = game.status ?? "waiting";
+
+    if (game.winner === "X" || game.winner === "O") {
+      gameOver = true;
+      statusTextEl.textContent = `Spieler ${game.winner} gewinnt das Spiel!`;
+    } else if (game.winner === "draw") {
+      gameOver = true;
+      statusTextEl.textContent = "Unentschieden!";
+    } else {
+      gameOver = false;
+
+      if (currentGameStatus === "waiting") {
+        statusTextEl.textContent = "Warte auf zweiten Spieler...";
+      } else if (currentGameStatus === "playing") {
+        statusTextEl.textContent =
+          currentPlayer === playerSymbol
+            ? "Du bist am Zug."
+            : `Spieler ${currentPlayer} ist am Zug.`;
+      } else {
+        statusTextEl.textContent = "Spiel läuft";
+      }
+    }
+
+    render();
   }
 
-  function resetGame() {
+  async function resetGame() {
+    if (isRealtimeGame && roomCode) {
+      try {
+        const gameRef = doc(db, "games", roomCode);
+        await updateDoc(gameRef, {
+          status: "playing",
+          currentPlayer: "X",
+          nextBoardIndex: null,
+          cellStates: createEmptyCellStates(),
+          miniBoardWinners: createEmptyMiniWinners(),
+          winner: ""
+        });
+      } catch (error) {
+        console.error(error);
+        statusTextEl.textContent = "Fehler beim Zurücksetzen.";
+      }
+      return;
+    }
+
     currentPlayer = "X";
     nextBoardIndex = null;
     gameOver = false;
-    cellStates = Array.from({ length: 9 }, () => Array(9).fill(""));
-    miniBoardWinners = Array(9).fill("");
+    cellStates = createEmptyCellStates();
+    miniBoardWinners = createEmptyMiniWinners();
     statusTextEl.textContent = "Spiel läuft";
     render();
   }
 
+  function setupRealtimeRoom() {
+    if (!roomCode) return;
+
+    const gameRef = doc(db, "games", roomCode);
+
+    onSnapshot(gameRef, async (snapshot) => {
+      if (!snapshot.exists()) {
+        statusTextEl.textContent = "Room wurde nicht gefunden.";
+        return;
+      }
+
+      const game = snapshot.data();
+
+      if (
+        mode === "private-host" &&
+        game.status === "waiting" &&
+        !game.guest
+      ) {
+        statusTextEl.textContent = "Warte auf zweiten Spieler...";
+      }
+
+      if (
+        mode === "private-host" &&
+        game.status === "waiting" &&
+        game.guest
+      ) {
+        try {
+          await updateDoc(gameRef, {
+            status: "playing"
+          });
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      applySnapshot(game);
+    });
+  }
+
   resetBtn.addEventListener("click", resetGame);
 
+  setModeDisplay();
   createBoard();
+
+  if (isRealtimeGame) {
+    setupRealtimeRoom();
+  }
 }

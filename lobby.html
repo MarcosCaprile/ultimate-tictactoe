@@ -22,14 +22,15 @@
         <span class="section-kicker">Private lobby</span>
         <h1>Erstelle oder joine einen Room</h1>
         <p class="hero-text narrow">
-          Diese Seite ist jetzt mit Firebase verbunden. Rooms werden in Firestore gespeichert.
+          Diese Seite erstellt jetzt echte Rooms in Firestore. Sobald zwei Spieler verbunden sind,
+          spielen beide im selben Match.
         </p>
       </section>
 
       <section class="lobby-grid">
         <article class="lobby-card">
           <h2>Room erstellen</h2>
-          <p>Erzeuge einen Code und teile ihn mit einem Freund.</p>
+          <p>Erzeuge einen Code, teile ihn mit einem Freund und gehe als Host direkt ins Match.</p>
 
           <div class="room-code-box">
             <span class="room-label">Room-Code</span>
@@ -38,21 +39,24 @@
 
           <div class="stack-actions">
             <button class="primary-btn" id="generateCodeBtn" type="button">Neuen Code generieren</button>
-            <a href="game.html?mode=private-host" class="secondary-btn">Als Host zur Spielseite</a>
+            <a href="#" class="secondary-btn" id="hostRoomLink">Als Host ins Spiel</a>
           </div>
+
+          <span class="join-hint" id="createHint">Noch kein Room erstellt.</span>
         </article>
 
         <article class="lobby-card">
           <h2>Room beitreten</h2>
-          <p>Gib einen existierenden Code ein.</p>
+          <p>Gib einen existierenden Code ein, um demselben Spiel wie dein Freund beizutreten.</p>
 
           <label class="input-label" for="roomInput">Room-Code</label>
           <input id="roomInput" class="room-input" type="text" placeholder="z. B. UTTT-4821" />
 
           <div class="stack-actions">
             <button class="primary-btn" id="joinRoomBtn" type="button">Room beitreten</button>
-            <span class="join-hint" id="joinHint">Noch kein Code eingegeben.</span>
           </div>
+
+          <span class="join-hint" id="joinHint">Noch kein Code eingegeben.</span>
         </article>
       </section>
     </main>
