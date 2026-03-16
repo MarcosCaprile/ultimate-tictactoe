@@ -746,7 +746,6 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
     tryJoinOrCreateQuickMatch();
   });
 }
-
 /* =========================
    GAME PAGE
    ========================= */
