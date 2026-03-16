@@ -42,6 +42,7 @@ let botDifficulty = null;
 let currentGameId = null;
 let currentGameData = null;
 let botThinking = false;
+let resultOverlay = null;
 
 function nowMs() {
   return Date.now();
@@ -81,6 +82,16 @@ function getWinner(board) {
   return "";
 }
 
+function findWinningLine(board) {
+  for (const combo of WINNING_COMBINATIONS) {
+    const [a, b, c] = combo;
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return combo;
+    }
+  }
+  return null;
+}
+
 function isBoardFull(board) {
   return board.every((cell) => cell !== "");
 }
@@ -89,30 +100,6 @@ function boardName(index) {
   const row = Math.floor(index / 3) + 1;
   const col = (index % 3) + 1;
   return `Reihe ${row}, Spalte ${col}`;
-}
-
-function cloneState(state) {
-  return {
-    cellStates: [...state.cellStates],
-    miniBoardWinners: [...state.miniBoardWinners],
-    currentPlayer: state.currentPlayer,
-    nextBoardIndex: state.nextBoardIndex,
-    winner: state.winner,
-    status: state.status,
-    gameOver: state.gameOver
-  };
-}
-
-function buildInitialState() {
-  return {
-    cellStates: Array(81).fill(""),
-    miniBoardWinners: Array(9).fill(""),
-    currentPlayer: "X",
-    nextBoardIndex: null,
-    winner: "",
-    status: "playing",
-    gameOver: false
-  };
 }
 
 function buildNextStateFrom(player, stateCellStates, stateMiniBoardWinners, stateNextBoardIndex, boardIndex, cellIndex) {
@@ -337,12 +324,8 @@ function scoreMoveHeuristic(state, move, player) {
   if (nextState.nextBoardIndex !== null) {
     const targetBoard = getMiniBoard(nextState.cellStates, nextState.nextBoardIndex);
     const targetWinner = getWinner(targetBoard);
-    if (targetWinner === opponent) {
-      score += 10;
-    }
-    if (targetWinner === player) {
-      score -= 8;
-    }
+    if (targetWinner === opponent) score += 10;
+    if (targetWinner === player) score -= 8;
   }
 
   return score;
@@ -493,6 +476,77 @@ function chooseBotMove() {
   return fallbackCandidates[0] || validMoves[0];
 }
 
+function clearResultOverlay() {
+  if (resultOverlay) {
+    resultOverlay.remove();
+    resultOverlay = null;
+  }
+}
+
+function showResultOverlay(type, title, subtitle) {
+  clearResultOverlay();
+
+  resultOverlay = document.createElement("div");
+  resultOverlay.className = `game-result-overlay ${type}`;
+
+  const inner = document.createElement("div");
+  inner.className = "game-result-inner";
+
+  const titleEl = document.createElement("div");
+  titleEl.className = "game-result-title";
+  titleEl.textContent = title;
+
+  const subtitleEl = document.createElement("div");
+  subtitleEl.className = "game-result-subtitle";
+  subtitleEl.textContent = subtitle;
+
+  inner.appendChild(titleEl);
+  inner.appendChild(subtitleEl);
+  resultOverlay.appendChild(inner);
+  ultimateBoard.appendChild(resultOverlay);
+}
+
+function updateResultOverlay() {
+  if (!gameOver) {
+    clearResultOverlay();
+    return;
+  }
+
+  const normalizedGlobalBoard = miniBoardWinners.map((value) => (value === "draw" ? "" : value));
+  const globalWinner = getWinner(normalizedGlobalBoard);
+
+  if (globalWinner === "draw" || (!globalWinner && miniBoardWinners.every((value) => value !== ""))) {
+    showResultOverlay("draw", "Unentschieden", "Keiner konnte das große Feld für sich entscheiden.");
+    return;
+  }
+
+  if (isOnlineGame) {
+    if (globalWinner === playerSymbol) {
+      showResultOverlay("win", "Du gewinnst!", "Stark gespielt – du hast das Match entschieden.");
+    } else {
+      showResultOverlay("loss", "Du verlierst", "Der Gegner hat das große Feld gewonnen.");
+    }
+    return;
+  }
+
+  if (isBotGame) {
+    if (globalWinner === "X") {
+      showResultOverlay("win", "Du gewinnst!", "Du hast den Bot geschlagen.");
+    } else if (globalWinner === "O") {
+      showResultOverlay("loss", "Bot gewinnt", "Der Bot war dieses Mal stärker.");
+    } else {
+      showResultOverlay("draw", "Unentschieden", "Niemand gewinnt diese Runde.");
+    }
+    return;
+  }
+
+  if (globalWinner === "X" || globalWinner === "O") {
+    showResultOverlay("draw", `Spieler ${globalWinner} gewinnt`, "Das Spiel ist beendet.");
+  } else {
+    showResultOverlay("draw", "Unentschieden", "Das Spiel ist beendet.");
+  }
+}
+
 function maybeTriggerBotMove() {
   if (!isBotGame) return;
   if (gameOver) return;
@@ -560,11 +614,17 @@ function isMoveAllowed(boardIndex, cellIndex) {
 
 function createBoard() {
   ultimateBoard.innerHTML = "";
+  clearResultOverlay();
 
   for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
     const miniBoard = document.createElement("div");
     miniBoard.className = "mini-board";
     miniBoard.dataset.boardIndex = String(boardIndex);
+
+    const overlay = document.createElement("div");
+    overlay.className = "mini-board-winner";
+    overlay.dataset.overlayBoardIndex = String(boardIndex);
+    miniBoard.appendChild(overlay);
 
     for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
       const cell = document.createElement("button");
@@ -628,6 +688,30 @@ async function handleCellClick(event) {
   maybeTriggerBotMove();
 }
 
+function renderMiniBoardOverlays() {
+  const miniBoards = ultimateBoard.querySelectorAll(".mini-board");
+
+  miniBoards.forEach((miniBoardEl, boardIndex) => {
+    const overlay = miniBoardEl.querySelector(".mini-board-winner");
+    if (!overlay) return;
+
+    const winner = miniBoardWinners[boardIndex];
+    overlay.classList.remove("show", "winner-x", "winner-o", "winner-draw");
+    overlay.textContent = "";
+
+    if (winner === "X") {
+      overlay.textContent = "X";
+      overlay.classList.add("show", "winner-x");
+    } else if (winner === "O") {
+      overlay.textContent = "O";
+      overlay.classList.add("show", "winner-o");
+    } else if (winner === "draw") {
+      overlay.textContent = "—";
+      overlay.classList.add("show", "winner-draw");
+    }
+  });
+}
+
 function render() {
   const miniBoards = ultimateBoard.querySelectorAll(".mini-board");
 
@@ -663,6 +747,9 @@ function render() {
       }
     });
   });
+
+  renderMiniBoardOverlays();
+  updateResultOverlay();
 
   currentPlayerEl.textContent = currentPlayer;
   targetBoardEl.textContent = nextBoardIndex === null ? "Beliebig" : boardName(nextBoardIndex);
@@ -729,6 +816,7 @@ if (resetBtn) {
     gameOver = false;
     cellStates = Array(81).fill("");
     miniBoardWinners = Array(9).fill("");
+    clearResultOverlay();
 
     if (isBotGame) {
       statusTextEl.textContent = "Du bist am Zug.";
@@ -748,6 +836,7 @@ function initLocalGame() {
   gameOver = false;
   cellStates = Array(81).fill("");
   miniBoardWinners = Array(9).fill("");
+  clearResultOverlay();
 
   modeTextEl.textContent = "Local";
   playerRoleTextEl.textContent = "X / O lokal";
@@ -770,6 +859,7 @@ function initBotGame(mode) {
   gameOver = false;
   cellStates = Array(81).fill("");
   miniBoardWinners = Array(9).fill("");
+  clearResultOverlay();
 
   modeTextEl.textContent = `Bot ${botDifficulty[0].toUpperCase()}${botDifficulty.slice(1)}`;
   playerRoleTextEl.textContent = "Du bist X";
@@ -800,6 +890,7 @@ async function initOnlineGame(user) {
   const game = snap.data();
   isOnlineGame = true;
   isBotGame = false;
+  clearResultOverlay();
 
   if (game.hostUid === user.uid) {
     playerSymbol = "X";
