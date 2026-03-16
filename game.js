@@ -37,8 +37,11 @@ let cellStates = Array(81).fill("");
 let miniBoardWinners = Array(9).fill("");
 let playerSymbol = "X";
 let isOnlineGame = false;
+let isBotGame = false;
+let botDifficulty = null;
 let currentGameId = null;
 let currentGameData = null;
+let botThinking = false;
 
 function nowMs() {
   return Date.now();
@@ -88,6 +91,30 @@ function boardName(index) {
   return `Reihe ${row}, Spalte ${col}`;
 }
 
+function cloneState(state) {
+  return {
+    cellStates: [...state.cellStates],
+    miniBoardWinners: [...state.miniBoardWinners],
+    currentPlayer: state.currentPlayer,
+    nextBoardIndex: state.nextBoardIndex,
+    winner: state.winner,
+    status: state.status,
+    gameOver: state.gameOver
+  };
+}
+
+function buildInitialState() {
+  return {
+    cellStates: Array(81).fill(""),
+    miniBoardWinners: Array(9).fill(""),
+    currentPlayer: "X",
+    nextBoardIndex: null,
+    winner: "",
+    status: "playing",
+    gameOver: false
+  };
+}
+
 function buildNextStateFrom(player, stateCellStates, stateMiniBoardWinners, stateNextBoardIndex, boardIndex, cellIndex) {
   const newCellStates = [...stateCellStates];
   const newMiniBoardWinners = [...stateMiniBoardWinners];
@@ -103,7 +130,7 @@ function buildNextStateFrom(player, stateCellStates, stateMiniBoardWinners, stat
     newMiniBoardWinners[boardIndex] = "draw";
   }
 
-  const normalizedGlobalBoard = newMiniBoardWinners.map((value) => value === "draw" ? "" : value);
+  const normalizedGlobalBoard = newMiniBoardWinners.map((value) => (value === "draw" ? "" : value));
   const globalWinner = getWinner(normalizedGlobalBoard);
 
   let newGameOver = false;
@@ -150,17 +177,382 @@ function buildNextState(boardIndex, cellIndex) {
   );
 }
 
+function getAllValidMovesForState(stateCellStates, stateMiniBoardWinners, stateNextBoardIndex) {
+  const moves = [];
+
+  for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
+    if (stateMiniBoardWinners[boardIndex] !== "") continue;
+    if (stateNextBoardIndex !== null && stateNextBoardIndex !== boardIndex) continue;
+
+    for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
+      if (getCellValue(stateCellStates, boardIndex, cellIndex) === "") {
+        moves.push({ boardIndex, cellIndex });
+      }
+    }
+  }
+
+  return moves;
+}
+
+function countLinePotential(line, player) {
+  const opponent = player === "X" ? "O" : "X";
+  const own = line.filter((x) => x === player).length;
+  const opp = line.filter((x) => x === opponent).length;
+  const empty = line.filter((x) => x === "").length;
+
+  if (opp > 0 && own > 0) return 0;
+  if (own === 3) return 500;
+  if (own === 2 && empty === 1) return 35;
+  if (own === 1 && empty === 2) return 6;
+  if (opp === 2 && empty === 1) return -30;
+  if (opp === 3) return -500;
+  return 0;
+}
+
+function evaluateMiniBoard(board, player) {
+  const opponent = player === "X" ? "O" : "X";
+  let score = 0;
+
+  const winner = getWinner(board);
+  if (winner === player) return 120;
+  if (winner === opponent) return -120;
+
+  if (board[4] === player) score += 4;
+  if (board[4] === opponent) score -= 4;
+
+  [0, 2, 6, 8].forEach((i) => {
+    if (board[i] === player) score += 2;
+    if (board[i] === opponent) score -= 2;
+  });
+
+  for (const [a, b, c] of WINNING_COMBINATIONS) {
+    score += countLinePotential([board[a], board[b], board[c]], player);
+  }
+
+  return score;
+}
+
+function evaluateGlobalBoard(stateMiniBoardWinners, player) {
+  const normalized = stateMiniBoardWinners.map((v) => (v === "draw" ? "" : v));
+  const opponent = player === "X" ? "O" : "X";
+  let score = 0;
+
+  const winner = getWinner(normalized);
+  if (winner === player) return 1000000;
+  if (winner === opponent) return -1000000;
+
+  if (normalized[4] === player) score += 40;
+  if (normalized[4] === opponent) score -= 40;
+
+  [0, 2, 6, 8].forEach((i) => {
+    if (normalized[i] === player) score += 18;
+    if (normalized[i] === opponent) score -= 18;
+  });
+
+  for (const [a, b, c] of WINNING_COMBINATIONS) {
+    score += countLinePotential([normalized[a], normalized[b], normalized[c]], player) * 8;
+  }
+
+  return score;
+}
+
+function countImmediateWinningMovesFor(state, player) {
+  const moves = getAllValidMovesForState(state.cellStates, state.miniBoardWinners, state.nextBoardIndex);
+  let count = 0;
+
+  for (const move of moves) {
+    const nextState = buildNextStateFrom(
+      player,
+      state.cellStates,
+      state.miniBoardWinners,
+      state.nextBoardIndex,
+      move.boardIndex,
+      move.cellIndex
+    );
+    if (nextState.winner === player) count++;
+  }
+
+  return count;
+}
+
+function evaluateState(state, perspectivePlayer) {
+  const opponent = perspectivePlayer === "X" ? "O" : "X";
+
+  if (state.winner === perspectivePlayer) return 10000000;
+  if (state.winner === opponent) return -10000000;
+  if (state.winner === "draw") return 0;
+
+  let score = 0;
+
+  score += evaluateGlobalBoard(state.miniBoardWinners, perspectivePlayer);
+
+  for (let boardIndex = 0; boardIndex < 9; boardIndex++) {
+    const winnerMark = state.miniBoardWinners[boardIndex];
+    if (winnerMark === "") {
+      score += evaluateMiniBoard(getMiniBoard(state.cellStates, boardIndex), perspectivePlayer);
+    } else if (winnerMark === perspectivePlayer) {
+      score += boardIndex === 4 ? 30 : [0, 2, 6, 8].includes(boardIndex) ? 20 : 14;
+    } else if (winnerMark === opponent) {
+      score -= boardIndex === 4 ? 30 : [0, 2, 6, 8].includes(boardIndex) ? 20 : 14;
+    }
+  }
+
+  const ownThreats = countImmediateWinningMovesFor(state, perspectivePlayer);
+  const oppThreats = countImmediateWinningMovesFor(state, opponent);
+
+  score += ownThreats * 220;
+  score -= oppThreats * 260;
+
+  if (state.nextBoardIndex === null) {
+    score += 6;
+  } else {
+    const target = state.nextBoardIndex;
+    if (state.miniBoardWinners[target] === perspectivePlayer) score += 12;
+    if (state.miniBoardWinners[target] === opponent) score += 16;
+  }
+
+  return score;
+}
+
+function scoreMoveHeuristic(state, move, player) {
+  const nextState = buildNextStateFrom(
+    player,
+    state.cellStates,
+    state.miniBoardWinners,
+    state.nextBoardIndex,
+    move.boardIndex,
+    move.cellIndex
+  );
+
+  let score = evaluateState(nextState, player);
+  const opponent = player === "X" ? "O" : "X";
+
+  if (nextState.winner === player) score += 5000000;
+  if (nextState.winner === opponent) score -= 5000000;
+
+  const boardWeight = move.boardIndex === 4 ? 20 : [0, 2, 6, 8].includes(move.boardIndex) ? 10 : 6;
+  const cellWeight = move.cellIndex === 4 ? 16 : [0, 2, 6, 8].includes(move.cellIndex) ? 9 : 5;
+  score += boardWeight + cellWeight;
+
+  if (nextState.nextBoardIndex !== null) {
+    const targetBoard = getMiniBoard(nextState.cellStates, nextState.nextBoardIndex);
+    const targetWinner = getWinner(targetBoard);
+    if (targetWinner === opponent) {
+      score += 10;
+    }
+    if (targetWinner === player) {
+      score -= 8;
+    }
+  }
+
+  return score;
+}
+
+function getCandidateMoves(state, player, limit = 8) {
+  const moves = getAllValidMovesForState(state.cellStates, state.miniBoardWinners, state.nextBoardIndex);
+
+  return moves
+    .map((move) => ({
+      ...move,
+      heuristic: scoreMoveHeuristic(state, move, player)
+    }))
+    .sort((a, b) => b.heuristic - a.heuristic)
+    .slice(0, limit);
+}
+
+function minimax(state, depth, alpha, beta, maximizingPlayer, perspectivePlayer, candidateLimit) {
+  const opponent = perspectivePlayer === "X" ? "O" : "X";
+
+  if (depth === 0 || state.gameOver) {
+    return {
+      score: evaluateState(state, perspectivePlayer),
+      move: null
+    };
+  }
+
+  const playerToMove = maximizingPlayer ? perspectivePlayer : opponent;
+  const candidates = getCandidateMoves(state, playerToMove, candidateLimit);
+
+  if (candidates.length === 0) {
+    return {
+      score: evaluateState(state, perspectivePlayer),
+      move: null
+    };
+  }
+
+  if (maximizingPlayer) {
+    let bestScore = -Infinity;
+    let bestMove = candidates[0];
+
+    for (const move of candidates) {
+      const nextState = buildNextStateFrom(
+        playerToMove,
+        state.cellStates,
+        state.miniBoardWinners,
+        state.nextBoardIndex,
+        move.boardIndex,
+        move.cellIndex
+      );
+
+      const result = minimax(nextState, depth - 1, alpha, beta, false, perspectivePlayer, candidateLimit);
+      const score = result.score;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = move;
+      }
+
+      alpha = Math.max(alpha, bestScore);
+      if (beta <= alpha) break;
+    }
+
+    return { score: bestScore, move: bestMove };
+  }
+
+  let bestScore = Infinity;
+  let bestMove = candidates[0];
+
+  for (const move of candidates) {
+    const nextState = buildNextStateFrom(
+      playerToMove,
+      state.cellStates,
+      state.miniBoardWinners,
+      state.nextBoardIndex,
+      move.boardIndex,
+      move.cellIndex
+    );
+
+    const result = minimax(nextState, depth - 1, alpha, beta, true, perspectivePlayer, candidateLimit);
+    const score = result.score;
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestMove = move;
+    }
+
+    beta = Math.min(beta, bestScore);
+    if (beta <= alpha) break;
+  }
+
+  return { score: bestScore, move: bestMove };
+}
+
+function findImmediateWinningMove(state, player) {
+  const moves = getAllValidMovesForState(state.cellStates, state.miniBoardWinners, state.nextBoardIndex);
+
+  for (const move of moves) {
+    const nextState = buildNextStateFrom(
+      player,
+      state.cellStates,
+      state.miniBoardWinners,
+      state.nextBoardIndex,
+      move.boardIndex,
+      move.cellIndex
+    );
+
+    if (nextState.winner === player) {
+      return move;
+    }
+  }
+
+  return null;
+}
+
+function chooseBotMove() {
+  const state = {
+    cellStates: [...cellStates],
+    miniBoardWinners: [...miniBoardWinners],
+    currentPlayer,
+    nextBoardIndex,
+    winner: "",
+    status: gameOver ? "finished" : "playing",
+    gameOver
+  };
+
+  const validMoves = getAllValidMovesForState(state.cellStates, state.miniBoardWinners, state.nextBoardIndex);
+  if (validMoves.length === 0) return null;
+
+  const immediateWin = findImmediateWinningMove(state, "O");
+  if (immediateWin) return immediateWin;
+
+  const mediumOrHard = botDifficulty === "medium" || botDifficulty === "hard";
+
+  if (botDifficulty === "easy") {
+    const candidates = getCandidateMoves(state, "O", Math.min(6, validMoves.length));
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  if (mediumOrHard) {
+    const depth = botDifficulty === "hard" ? 3 : 2;
+    const limit = botDifficulty === "hard" ? 6 : 5;
+    const result = minimax(state, depth, -Infinity, Infinity, true, "O", limit);
+    if (result.move) return result.move;
+  }
+
+  const fallbackCandidates = getCandidateMoves(state, "O", Math.min(5, validMoves.length));
+  return fallbackCandidates[0] || validMoves[0];
+}
+
+function maybeTriggerBotMove() {
+  if (!isBotGame) return;
+  if (gameOver) return;
+  if (currentPlayer !== "O") return;
+  if (botThinking) return;
+
+  botThinking = true;
+  statusTextEl.textContent = `Bot (${botDifficulty}) denkt...`;
+
+  setTimeout(() => {
+    const move = chooseBotMove();
+
+    if (!move) {
+      botThinking = false;
+      return;
+    }
+
+    const nextState = buildNextStateFrom(
+      "O",
+      cellStates,
+      miniBoardWinners,
+      nextBoardIndex,
+      move.boardIndex,
+      move.cellIndex
+    );
+
+    cellStates = nextState.cellStates;
+    miniBoardWinners = nextState.miniBoardWinners;
+    currentPlayer = nextState.currentPlayer;
+    nextBoardIndex = nextState.nextBoardIndex;
+    gameOver = nextState.gameOver;
+
+    if (nextState.winner === "O") {
+      statusTextEl.textContent = "Bot gewinnt das Spiel!";
+    } else if (nextState.winner === "draw") {
+      statusTextEl.textContent = "Unentschieden!";
+    } else {
+      statusTextEl.textContent = "Du bist am Zug.";
+    }
+
+    botThinking = false;
+    render();
+  }, botDifficulty === "easy" ? 350 : botDifficulty === "medium" ? 550 : 750);
+}
+
 function isMoveAllowed(boardIndex, cellIndex) {
   if (gameOver) return false;
   if (getCellValue(cellStates, boardIndex, cellIndex) !== "") return false;
   if (miniBoardWinners[boardIndex] !== "") return false;
-
   if (nextBoardIndex !== null && nextBoardIndex !== boardIndex) return false;
 
   if (isOnlineGame) {
     if (!currentGameData) return false;
     if (currentGameData.status !== "playing") return false;
     if (currentPlayer !== playerSymbol) return false;
+  }
+
+  if (isBotGame) {
+    if (currentPlayer !== "X") return false;
+    if (botThinking) return false;
   }
 
   return true;
@@ -222,15 +614,18 @@ async function handleCellClick(event) {
   nextBoardIndex = nextState.nextBoardIndex;
   gameOver = nextState.gameOver;
 
-  if (nextState.winner === "X" || nextState.winner === "O") {
-    statusTextEl.textContent = `Spieler ${nextState.winner} gewinnt das Spiel!`;
+  if (nextState.winner === "X") {
+    statusTextEl.textContent = isBotGame ? "Du gewinnst das Spiel!" : "Spieler X gewinnt das Spiel!";
+  } else if (nextState.winner === "O") {
+    statusTextEl.textContent = isBotGame ? "Bot gewinnt das Spiel!" : "Spieler O gewinnt das Spiel!";
   } else if (nextState.winner === "draw") {
     statusTextEl.textContent = "Unentschieden!";
   } else {
-    statusTextEl.textContent = `Spieler ${currentPlayer} ist am Zug.`;
+    statusTextEl.textContent = isBotGame ? `Bot (${botDifficulty}) ist am Zug.` : `Spieler ${currentPlayer} ist am Zug.`;
   }
 
   render();
+  maybeTriggerBotMove();
 }
 
 function render() {
@@ -334,17 +729,54 @@ if (resetBtn) {
     gameOver = false;
     cellStates = Array(81).fill("");
     miniBoardWinners = Array(9).fill("");
-    statusTextEl.textContent = "Spiel läuft";
+
+    if (isBotGame) {
+      statusTextEl.textContent = "Du bist am Zug.";
+    } else {
+      statusTextEl.textContent = "Spiel läuft";
+    }
+
     render();
   });
 }
 
 function initLocalGame() {
   isOnlineGame = false;
+  isBotGame = false;
+  currentPlayer = "X";
+  nextBoardIndex = null;
+  gameOver = false;
+  cellStates = Array(81).fill("");
+  miniBoardWinners = Array(9).fill("");
+
   modeTextEl.textContent = "Local";
   playerRoleTextEl.textContent = "X / O lokal";
   gameIdTextEl.textContent = "-";
   gameSubtitleEl.textContent = "Lokales Spiel auf einem Gerät.";
+  statusTextEl.textContent = "Spiel läuft";
+
+  createBoard();
+  render();
+}
+
+function initBotGame(mode) {
+  isOnlineGame = false;
+  isBotGame = true;
+  botDifficulty = mode.replace("bot-", "");
+  playerSymbol = "X";
+
+  currentPlayer = "X";
+  nextBoardIndex = null;
+  gameOver = false;
+  cellStates = Array(81).fill("");
+  miniBoardWinners = Array(9).fill("");
+
+  modeTextEl.textContent = `Bot ${botDifficulty[0].toUpperCase()}${botDifficulty.slice(1)}`;
+  playerRoleTextEl.textContent = "Du bist X";
+  gameIdTextEl.textContent = "-";
+  gameSubtitleEl.textContent = `Offline gegen einen smarteren Bot (${botDifficulty}).`;
+  statusTextEl.textContent = "Du bist am Zug.";
+
   createBoard();
   render();
 }
@@ -367,6 +799,7 @@ async function initOnlineGame(user) {
 
   const game = snap.data();
   isOnlineGame = true;
+  isBotGame = false;
 
   if (game.hostUid === user.uid) {
     playerSymbol = "X";
@@ -408,7 +841,10 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
 
-  if (mode === "local" || !gameId) {
-    initLocalGame();
+  if (mode === "bot-easy" || mode === "bot-medium" || mode === "bot-hard") {
+    initBotGame(mode);
+    return;
   }
+
+  initLocalGame();
 });

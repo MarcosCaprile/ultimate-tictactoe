@@ -625,3 +625,40 @@ input {
     padding-right: 16px;
   }
 }
+
+.mini-board.active-board {
+  border-color: rgba(96, 165, 250, 0.95);
+  box-shadow:
+    0 0 0 2px rgba(96, 165, 250, 0.22),
+    0 0 22px rgba(96, 165, 250, 0.18);
+  background: linear-gradient(180deg, rgba(26, 40, 66, 0.96), rgba(18, 30, 49, 0.96));
+}
+
+.cell.playable-cell {
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.18);
+  background: linear-gradient(180deg, rgba(15, 24, 40, 0.98), rgba(11, 19, 31, 0.98));
+}
+
+.cell.playable-cell:hover {
+  transform: translateY(-1px);
+  border-color: rgba(34, 211, 238, 0.75);
+  box-shadow:
+    0 0 0 1px rgba(34, 211, 238, 0.22),
+    0 0 14px rgba(34, 211, 238, 0.16);
+}
+
+.mini-board.won-x {
+  background: rgba(96, 165, 250, 0.16);
+  border-color: rgba(96, 165, 250, 0.45);
+}
+
+.mini-board.won-o {
+  background: rgba(139, 92, 246, 0.18);
+  border-color: rgba(139, 92, 246, 0.45);
+}
+
+.mini-board.draw-board {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.35);
+}
