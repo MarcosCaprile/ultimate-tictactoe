@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Online Center - Ultimate Tic Tac Toe</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="site-shell">
+    <header class="site-header">
+      <a href="index.html" class="brand">UltimateTTT</a>
+      <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="play.html">Play</a>
+        <a href="online.html" class="nav-play-btn">Online</a>
+      </nav>
+    </header>
+
+    <main class="page-main">
+      <section class="page-hero compact">
+        <span class="section-kicker">Online Center</span>
+        <h1>Finde Gegner und sende Einladungen</h1>
+        <p class="hero-text narrow">
+          Stelle deinen Status auf Gegnersuche und lade andere sichtbare Accounts direkt zu einem Match ein.
+        </p>
+      </section>
+
+      <section class="info-panel">
+        <div class="info-card">
+          <span class="label">Username</span>
+          <span id="profileUsername" class="value">-</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Status</span>
+          <span id="profileStatus" class="value">-</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Rating</span>
+          <span id="profileRating" class="value">1000</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Bilanz</span>
+          <span id="profileRecord" class="value">0 / 0 / 0</span>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Aktion</span>
+          <button id="searchToggleBtn" class="primary-btn small-btn" type="button">Ich suche Gegner</button>
+        </div>
+
+        <div class="info-card">
+          <span class="label">Session</span>
+          <button id="logoutBtn" class="secondary-btn small-btn" type="button">Logout</button>
+        </div>
+      </section>
+
+      <section class="lobby-grid">
+        <article class="lobby-card">
+          <h2>Spieler auf Gegnersuche</h2>
+          <p>Nur Spieler mit Status <strong>searching</strong> werden hier angezeigt.</p>
+          <div id="searchingPlayersList" class="stack-actions" style="display:block; margin-top:18px;"></div>
+          <span class="join-hint" id="searchingPlayersHint">Noch keine Spieler gefunden.</span>
+        </article>
+
+        <article class="lobby-card">
+          <h2>Eingehende Einladungen</h2>
+          <p>Hier erscheinen alle offenen Einladungen an deinen Account.</p>
+          <div id="incomingInvitesList" class="stack-actions" style="display:block; margin-top:18px;"></div>
+          <span class="join-hint" id="incomingInvitesHint">Keine offenen Einladungen.</span>
+        </article>
+      </section>
+
+      <section class="lobby-grid" style="margin-top:18px;">
+        <article class="lobby-card">
+          <h2>Ausgehende Einladungen</h2>
+          <p>Diese Einladungen hast du verschickt.</p>
+          <div id="outgoingInvitesList" class="stack-actions" style="display:block; margin-top:18px;"></div>
+          <span class="join-hint" id="outgoingInvitesHint">Keine ausgehenden Einladungen.</span>
+        </article>
+
+        <article class="lobby-card">
+          <h2>Hinweis</h2>
+          <p>
+            Für ein sauberes Match müssen beide Spieler eingeloggt sein.
+            Sobald eine Einladung angenommen wird, werdet ihr automatisch ins Spiel weitergeleitet.
+          </p>
+          <span class="join-hint" id="onlineStatusHint">Bereit.</span>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="online.js"></script>
+</body>
+</html>

@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ultimate Tic Tac Toe - Game</title>
-  <link rel="stylesheet" href="/style.css" />
-  <link rel="stylesheet" href="/game-effects.css" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="game-effects.css" />
 </head>
 <body>
   <div class="site-shell">
@@ -14,7 +14,7 @@
       <nav class="nav">
         <a href="/index.html">Home</a>
         <a href="/play.html">Play</a>
-        <a href="/lobby.html">Lobby</a>
+        <a href="/online.html">Online</a>
         <a href="/game.html" class="nav-play-btn">Game</a>
       </nav>
     </header>
@@ -25,7 +25,7 @@
           <span class="section-kicker">Game board</span>
           <h1>Ultimate Tic Tac Toe</h1>
           <p class="subtitle" id="gameSubtitle">
-            Lokales Spiel, Bot-Modi und Online-Matches.
+            Online-Match oder lokales Spiel.
           </p>
           <p class="subtitle" style="margin-top:10px;">
             Wichtig: <strong>Nur blau markierte Mini-Boards sind spielbar.</strong>
@@ -33,28 +33,21 @@
         </div>
 
         <div class="game-actions">
-          <a href="/play.html" class="secondary-btn small-btn">Zurück zum Hub</a>
-          <button id="copyRoomCodeBtn" class="secondary-btn small-btn" type="button">Code kopieren</button>
-          <button id="copyJoinLinkBtn" class="secondary-btn small-btn" type="button">Join-Link kopieren</button>
-          <button id="leaveRoomBtn" class="secondary-btn small-btn" type="button">Room verlassen</button>
-          <button id="resetBtn" class="primary-btn small-btn button-reset" type="button">Neues Spiel</button>
+          <a href="/play.html" class="secondary-btn small-btn">Zurück</a>
+          <button id="leaveGameBtn" class="secondary-btn small-btn" type="button">Spiel verlassen</button>
+          <button id="resetBtn" class="primary-btn small-btn button-reset" type="button">Lokales Spiel neu starten</button>
         </div>
       </section>
 
       <section class="info-panel">
         <div class="info-card">
           <span class="label">Modus</span>
-          <span id="modeText" class="value">Local</span>
+          <span id="modeText" class="value">-</span>
         </div>
 
         <div class="info-card">
-          <span class="label">Dein Symbol</span>
-          <span id="playerRoleText" class="value">X</span>
-        </div>
-
-        <div class="info-card">
-          <span class="label">Gegner Status</span>
-          <span id="opponentStatusText" class="value">Nicht relevant</span>
+          <span class="label">Du bist</span>
+          <span id="playerRoleText" class="value">-</span>
         </div>
 
         <div class="info-card">
@@ -73,8 +66,8 @@
         </div>
 
         <div class="info-card">
-          <span class="label">Room</span>
-          <span id="roomCodeText" class="value">-</span>
+          <span class="label">Game ID</span>
+          <span id="gameIdText" class="value">-</span>
         </div>
       </section>
 
@@ -84,6 +77,6 @@
     </main>
   </div>
 
-  <script type="module" src="/script.js"></script>
+  <script type="module" src="/game.js"></script>
 </body>
 </html>
