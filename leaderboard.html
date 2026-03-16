@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Leaderboard - Ultimate Tic Tac Toe</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="site-shell">
+    <header class="site-header">
+      <a href="/index.html" class="brand">UltimateTTT</a>
+      <nav class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/play.html">Play</a>
+        <a href="/online.html">Online</a>
+        <a href="/leaderboard.html" class="nav-play-btn">Leaderboard</a>
+      </nav>
+    </header>
+
+    <main class="page-main">
+      <section class="page-hero compact">
+        <span class="section-kicker">Ranking</span>
+        <h1>Leaderboard</h1>
+        <p class="hero-text narrow">
+          Die stärksten Spieler nach Rating. Das Rating wird nach jedem Online-Match per ELO-System aktualisiert.
+        </p>
+      </section>
+
+      <section class="info-panel">
+        <div class="info-card">
+          <span class="label">Dein Rang</span>
+          <span id="myRankText" class="value">-</span>
+        </div>
+        <div class="info-card">
+          <span class="label">Dein Username</span>
+          <span id="myUsernameText" class="value">-</span>
+        </div>
+        <div class="info-card">
+          <span class="label">Dein Rating</span>
+          <span id="myRatingText" class="value">-</span>
+        </div>
+        <div class="info-card">
+          <span class="label">Bilanz</span>
+          <span id="myRecordText" class="value">-</span>
+        </div>
+      </section>
+
+      <section class="lobby-grid" style="grid-template-columns: 1fr;">
+        <article class="lobby-card">
+          <h2>Top-Spieler</h2>
+          <p>Sortiert nach höchstem Rating.</p>
+
+          <div id="leaderboardList" style="margin-top: 18px;"></div>
+          <span class="join-hint" id="leaderboardHint">Leaderboard wird geladen...</span>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/leaderboard.js"></script>
+</body>
+</html>

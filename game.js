@@ -4,7 +4,8 @@ import {
   doc,
   getDoc,
   onSnapshot,
-  updateDoc
+  updateDoc,
+  runTransaction
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const ultimateBoard = document.getElementById("ultimateBoard");
@@ -29,6 +30,8 @@ const WINNING_COMBINATIONS = [
   [2, 4, 6]
 ];
 
+const ELO_K = 32;
+
 let currentUser = null;
 let currentPlayer = "X";
 let nextBoardIndex = null;
@@ -43,6 +46,7 @@ let currentGameId = null;
 let currentGameData = null;
 let botThinking = false;
 let resultOverlay = null;
+let ratingApplyInProgress = false;
 
 function nowMs() {
   return Date.now();
@@ -82,16 +86,6 @@ function getWinner(board) {
   return "";
 }
 
-function findWinningLine(board) {
-  for (const combo of WINNING_COMBINATIONS) {
-    const [a, b, c] = combo;
-    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
-      return combo;
-    }
-  }
-  return null;
-}
-
 function isBoardFull(board) {
   return board.every((cell) => cell !== "");
 }
@@ -100,6 +94,136 @@ function boardName(index) {
   const row = Math.floor(index / 3) + 1;
   const col = (index % 3) + 1;
   return `Reihe ${row}, Spalte ${col}`;
+}
+
+function expectedScore(playerRating, opponentRating) {
+  return 1 / (1 + Math.pow(10, (opponentRating - playerRating) / 400));
+}
+
+function calculateNewRatings(hostRating, guestRating, hostScore, guestScore) {
+  const expectedHost = expectedScore(hostRating, guestRating);
+  const expectedGuest = expectedScore(guestRating, hostRating);
+
+  const newHostRating = Math.round(hostRating + ELO_K * (hostScore - expectedHost));
+  const newGuestRating = Math.round(guestRating + ELO_K * (guestScore - expectedGuest));
+
+  return {
+    newHostRating,
+    newGuestRating
+  };
+}
+
+async function applyOnlineGameResultIfNeeded(game) {
+  if (!isOnlineGame || !currentGameId) return;
+  if (!game) return;
+  if (game.status !== "finished") return;
+  if (!(game.winner === "X" || game.winner === "O" || game.winner === "draw")) return;
+  if (game.ratingApplied) return;
+  if (ratingApplyInProgress) return;
+
+  ratingApplyInProgress = true;
+
+  const gameRef = doc(db, "games", currentGameId);
+  const hostRef = doc(db, "users", game.hostUid);
+  const guestRef = doc(db, "users", game.guestUid);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const freshGameSnap = await transaction.get(gameRef);
+      const hostSnap = await transaction.get(hostRef);
+      const guestSnap = await transaction.get(guestRef);
+
+      if (!freshGameSnap.exists()) throw new Error("Spiel nicht gefunden.");
+      if (!hostSnap.exists() || !guestSnap.exists()) throw new Error("Spielerprofil fehlt.");
+
+      const freshGame = freshGameSnap.data();
+      const host = hostSnap.data();
+      const guest = guestSnap.data();
+
+      if (freshGame.ratingApplied) {
+        return;
+      }
+
+      const hostRating = host.rating ?? 1000;
+      const guestRating = guest.rating ?? 1000;
+
+      let hostScore = 0;
+      let guestScore = 0;
+
+      if (freshGame.winner === "X") {
+        hostScore = 1;
+        guestScore = 0;
+      } else if (freshGame.winner === "O") {
+        hostScore = 0;
+        guestScore = 1;
+      } else {
+        hostScore = 0.5;
+        guestScore = 0.5;
+      }
+
+      const { newHostRating, newGuestRating } = calculateNewRatings(
+        hostRating,
+        guestRating,
+        hostScore,
+        guestScore
+      );
+
+      const hostPatch = {
+        rating: newHostRating,
+        currentGameId: null,
+        status: "online",
+        updatedAt: nowMs(),
+        lastSeen: nowMs()
+      };
+
+      const guestPatch = {
+        rating: newGuestRating,
+        currentGameId: null,
+        status: "online",
+        updatedAt: nowMs(),
+        lastSeen: nowMs()
+      };
+
+      if (freshGame.winner === "X") {
+        hostPatch.wins = (host.wins ?? 0) + 1;
+        hostPatch.losses = host.losses ?? 0;
+        hostPatch.draws = host.draws ?? 0;
+
+        guestPatch.wins = guest.wins ?? 0;
+        guestPatch.losses = (guest.losses ?? 0) + 1;
+        guestPatch.draws = guest.draws ?? 0;
+      } else if (freshGame.winner === "O") {
+        hostPatch.wins = host.wins ?? 0;
+        hostPatch.losses = (host.losses ?? 0) + 1;
+        hostPatch.draws = host.draws ?? 0;
+
+        guestPatch.wins = (guest.wins ?? 0) + 1;
+        guestPatch.losses = guest.losses ?? 0;
+        guestPatch.draws = guest.draws ?? 0;
+      } else {
+        hostPatch.wins = host.wins ?? 0;
+        hostPatch.losses = host.losses ?? 0;
+        hostPatch.draws = (host.draws ?? 0) + 1;
+
+        guestPatch.wins = guest.wins ?? 0;
+        guestPatch.losses = guest.losses ?? 0;
+        guestPatch.draws = (guest.draws ?? 0) + 1;
+      }
+
+      transaction.update(hostRef, hostPatch);
+      transaction.update(guestRef, guestPatch);
+
+      transaction.update(gameRef, {
+        ratingApplied: true,
+        ratingAppliedAt: nowMs(),
+        updatedAt: nowMs()
+      });
+    });
+  } catch (error) {
+    console.error("Fehler beim Anwenden des ELO-Ergebnisses:", error);
+  } finally {
+    ratingApplyInProgress = false;
+  }
 }
 
 function buildNextStateFrom(player, stateCellStates, stateMiniBoardWinners, stateNextBoardIndex, boardIndex, cellIndex) {
@@ -321,13 +445,6 @@ function scoreMoveHeuristic(state, move, player) {
   const cellWeight = move.cellIndex === 4 ? 16 : [0, 2, 6, 8].includes(move.cellIndex) ? 9 : 5;
   score += boardWeight + cellWeight;
 
-  if (nextState.nextBoardIndex !== null) {
-    const targetBoard = getMiniBoard(nextState.cellStates, nextState.nextBoardIndex);
-    const targetWinner = getWinner(targetBoard);
-    if (targetWinner === opponent) score += 10;
-    if (targetWinner === player) score -= 8;
-  }
-
   return score;
 }
 
@@ -458,19 +575,15 @@ function chooseBotMove() {
   const immediateWin = findImmediateWinningMove(state, "O");
   if (immediateWin) return immediateWin;
 
-  const mediumOrHard = botDifficulty === "medium" || botDifficulty === "hard";
-
   if (botDifficulty === "easy") {
     const candidates = getCandidateMoves(state, "O", Math.min(6, validMoves.length));
     return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
-  if (mediumOrHard) {
-    const depth = botDifficulty === "hard" ? 3 : 2;
-    const limit = botDifficulty === "hard" ? 6 : 5;
-    const result = minimax(state, depth, -Infinity, Infinity, true, "O", limit);
-    if (result.move) return result.move;
-  }
+  const depth = botDifficulty === "hard" ? 3 : 2;
+  const limit = botDifficulty === "hard" ? 6 : 5;
+  const result = minimax(state, depth, -Infinity, Infinity, true, "O", limit);
+  if (result.move) return result.move;
 
   const fallbackCandidates = getCandidateMoves(state, "O", Math.min(5, validMoves.length));
   return fallbackCandidates[0] || validMoves[0];
@@ -515,16 +628,18 @@ function updateResultOverlay() {
   const normalizedGlobalBoard = miniBoardWinners.map((value) => (value === "draw" ? "" : value));
   const globalWinner = getWinner(normalizedGlobalBoard);
 
-  if (globalWinner === "draw" || (!globalWinner && miniBoardWinners.every((value) => value !== ""))) {
+  if (!globalWinner && miniBoardWinners.every((value) => value !== "")) {
     showResultOverlay("draw", "Unentschieden", "Keiner konnte das große Feld für sich entscheiden.");
     return;
   }
 
   if (isOnlineGame) {
     if (globalWinner === playerSymbol) {
-      showResultOverlay("win", "Du gewinnst!", "Stark gespielt – du hast das Match entschieden.");
+      showResultOverlay("win", "Du gewinnst!", "Dein Rating wird jetzt aktualisiert.");
+    } else if (globalWinner) {
+      showResultOverlay("loss", "Du verlierst", "Das Rating wird jetzt aktualisiert.");
     } else {
-      showResultOverlay("loss", "Du verlierst", "Der Gegner hat das große Feld gewonnen.");
+      showResultOverlay("draw", "Unentschieden", "Das Rating wird jetzt aktualisiert.");
     }
     return;
   }
@@ -548,17 +663,13 @@ function updateResultOverlay() {
 }
 
 function maybeTriggerBotMove() {
-  if (!isBotGame) return;
-  if (gameOver) return;
-  if (currentPlayer !== "O") return;
-  if (botThinking) return;
+  if (!isBotGame || gameOver || currentPlayer !== "O" || botThinking) return;
 
   botThinking = true;
   statusTextEl.textContent = `Bot (${botDifficulty}) denkt...`;
 
   setTimeout(() => {
     const move = chooseBotMove();
-
     if (!move) {
       botThinking = false;
       return;
@@ -621,11 +732,6 @@ function createBoard() {
     miniBoard.className = "mini-board";
     miniBoard.dataset.boardIndex = String(boardIndex);
 
-    const overlay = document.createElement("div");
-    overlay.className = "mini-board-winner";
-    overlay.dataset.overlayBoardIndex = String(boardIndex);
-    miniBoard.appendChild(overlay);
-
     for (let cellIndex = 0; cellIndex < 9; cellIndex++) {
       const cell = document.createElement("button");
       cell.className = "cell";
@@ -635,6 +741,11 @@ function createBoard() {
       cell.addEventListener("click", handleCellClick);
       miniBoard.appendChild(cell);
     }
+
+    const overlay = document.createElement("div");
+    overlay.className = "mini-board-winner";
+    overlay.dataset.overlayBoardIndex = String(boardIndex);
+    miniBoard.appendChild(overlay);
 
     ultimateBoard.appendChild(miniBoard);
   }
@@ -755,7 +866,7 @@ function render() {
   targetBoardEl.textContent = nextBoardIndex === null ? "Beliebig" : boardName(nextBoardIndex);
 }
 
-function applyGameSnapshot(game) {
+async function applyGameSnapshot(game) {
   currentGameData = game;
   currentPlayer = game.currentPlayer ?? "X";
   nextBoardIndex = game.nextBoardIndex ?? null;
@@ -777,6 +888,10 @@ function applyGameSnapshot(game) {
   }
 
   render();
+
+  if (isOnlineGame) {
+    await applyOnlineGameResultIfNeeded(game);
+  }
 }
 
 async function leaveGame() {
@@ -908,13 +1023,13 @@ async function initOnlineGame(user) {
 
   createBoard();
 
-  onSnapshot(gameRef, (snapshot) => {
+  onSnapshot(gameRef, async (snapshot) => {
     if (!snapshot.exists()) {
       statusTextEl.textContent = "Dieses Spiel wurde entfernt.";
       return;
     }
 
-    applyGameSnapshot(snapshot.data());
+    await applyGameSnapshot(snapshot.data());
   });
 }
 
