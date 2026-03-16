@@ -271,38 +271,40 @@ async function generateUniqueRoomCode() {
 
 async function createRoom(roomCode) {
   const roomRef = doc(db, "games", roomCode);
-  const existingSnapshot = await getDoc(roomRef);
-
-  if (existingSnapshot.exists()) {
-    throw new Error("Dieser Room-Code ist bereits belegt.");
-  }
-
   const timestamp = nowMs();
   const hostToken = `host-${randomToken()}`;
   const joinToken = `join-${randomToken()}`;
 
-  await setDoc(roomRef, {
-    roomCode,
-    status: "waiting",
-    host: { name: "Player 1", symbol: "X" },
-    guest: null,
+  await runTransaction(db, async (transaction) => {
+    const existingSnapshot = await transaction.get(roomRef);
 
-    hostToken,
-    joinToken,
+    if (existingSnapshot.exists()) {
+      throw new Error("Dieser Room-Code ist bereits belegt.");
+    }
 
-    hostConnected: false,
-    hostLastSeen: null,
-    guestConnected: false,
-    guestLastSeen: null,
+    transaction.set(roomRef, {
+      roomCode,
+      status: "waiting",
+      host: { name: "Player 1", symbol: "X" },
+      guest: null,
 
-    currentPlayer: "X",
-    nextBoardIndex: null,
-    cellStates: createEmptyCellStates(),
-    miniBoardWinners: createEmptyMiniWinners(),
-    winner: "",
+      hostToken,
+      joinToken,
 
-    createdAt: timestamp,
-    updatedAt: timestamp
+      hostConnected: false,
+      hostLastSeen: null,
+      guestConnected: false,
+      guestLastSeen: null,
+
+      currentPlayer: "X",
+      nextBoardIndex: null,
+      cellStates: createEmptyCellStates(),
+      miniBoardWinners: createEmptyMiniWinners(),
+      winner: "",
+
+      createdAt: timestamp,
+      updatedAt: timestamp
+    });
   });
 
   return { hostToken, joinToken };
@@ -371,48 +373,41 @@ if (joinRoomBtn && roomInput && joinHint) {
       joinHint.textContent = "Room wird gesucht...";
 
       const gameRef = doc(db, "games", roomCode);
-      const snap = await getDoc(gameRef);
 
-      if (!snap.exists()) {
-        joinHint.textContent = "Room nicht gefunden.";
-        joinRoomBtn.disabled = false;
-        isJoiningRoom = false;
-        return;
-      }
+      const joinResult = await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(gameRef);
 
-      const game = snap.data();
+        if (!snap.exists()) {
+          throw new Error("Room nicht gefunden.");
+        }
 
-      if (roomShouldBeDeleted(game)) {
-        await deleteDoc(gameRef);
-        joinHint.textContent = "Dieser Room ist abgelaufen.";
-        joinRoomBtn.disabled = false;
-        isJoiningRoom = false;
-        return;
-      }
+        const game = snap.data();
 
-      if (!game.joinToken) {
-        joinHint.textContent = "Dieser Room ist ungültig.";
-        joinRoomBtn.disabled = false;
-        isJoiningRoom = false;
-        return;
-      }
+        if (roomShouldBeDeleted(game)) {
+          transaction.delete(gameRef);
+          throw new Error("Dieser Room ist abgelaufen.");
+        }
 
-      if (game.guest) {
-        joinHint.textContent = "Room ist bereits voll.";
-        joinRoomBtn.disabled = false;
-        isJoiningRoom = false;
-        return;
-      }
+        if (!game.joinToken) {
+          throw new Error("Dieser Room ist ungültig.");
+        }
 
-      await updateDoc(gameRef, {
-        guest: { name: "Player 2", symbol: "O" },
-        guestConnected: false,
-        guestLastSeen: null,
-        status: "playing",
-        updatedAt: nowMs()
+        if (game.guest) {
+          throw new Error("Room ist bereits voll.");
+        }
+
+        transaction.update(gameRef, {
+          guest: { name: "Player 2", symbol: "O" },
+          guestConnected: false,
+          guestLastSeen: null,
+          status: "playing",
+          updatedAt: nowMs()
+        });
+
+        return { joinToken: game.joinToken };
       });
 
-      window.location.href = buildGuestGameUrl(roomCode, game.joinToken, false);
+      window.location.href = buildGuestGameUrl(roomCode, joinResult.joinToken, false);
     } catch (error) {
       console.error("Fehler beim Joinen des Rooms:", error);
       joinHint.textContent = `Fehler: ${error.message}`;
@@ -451,17 +446,25 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
         updatedAt: nowMs(),
         roomCode: null,
         authToken: null,
-        role: null
+        role: null,
+        matchedAt: null
       });
-    } else {
-      const data = snapshot.data();
-      if (data.status !== "matched") {
-        await updateDoc(queueRef, {
-          status: "waiting",
-          updatedAt: nowMs()
-        });
-      }
+      return;
     }
+
+    const data = snapshot.data();
+    if (data.status === "matched" && data.roomCode && data.authToken && data.role) {
+      return;
+    }
+
+    await updateDoc(queueRef, {
+      status: "waiting",
+      updatedAt: nowMs(),
+      roomCode: null,
+      authToken: null,
+      role: null,
+      matchedAt: null
+    });
   }
 
   async function tryMatchOpponent() {
@@ -543,7 +546,8 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
           roomCode,
           authToken: hostToken,
           role: "host",
-          updatedAt: timestamp
+          updatedAt: timestamp,
+          matchedAt: timestamp
         });
 
         transaction.update(queueRef, {
@@ -551,7 +555,8 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
           roomCode,
           authToken: joinToken,
           role: "guest",
-          updatedAt: timestamp
+          updatedAt: timestamp,
+          matchedAt: timestamp
         });
       });
     } catch (error) {
@@ -575,8 +580,14 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
     }
   }
 
-  async function removeQueueEntry() {
+  async function removeQueueEntry(force = false) {
     try {
+      const snap = await getDoc(queueRef);
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+      if (!force && data.status !== "waiting") return;
+
       await deleteDoc(queueRef);
     } catch (error) {
       console.error("Queue-Löschen fehlgeschlagen:", error);
@@ -585,13 +596,13 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
 
   cancelQueueBtn.addEventListener("click", async () => {
     if (matchmakingInterval) clearInterval(matchmakingInterval);
-    await removeQueueEntry();
+    await removeQueueEntry(true);
     window.location.href = "play.html";
   });
 
-  window.addEventListener("beforeunload", async () => {
+  window.addEventListener("beforeunload", () => {
     if (!redirecting) {
-      await removeQueueEntry();
+      removeQueueEntry();
     }
   });
 
@@ -622,7 +633,6 @@ if (queueStatusTextEl && queueDetailTextEl && queueHintEl && cancelQueueBtn) {
         queueHintEl.textContent = "Weiterleitung ins Spiel...";
 
         if (matchmakingInterval) clearInterval(matchmakingInterval);
-        await removeQueueEntry();
 
         const isHost = data.role === "host";
         window.location.href = isHost
@@ -1176,6 +1186,7 @@ if (
           cellStates: createEmptyCellStates(),
           miniBoardWinners: createEmptyMiniWinners(),
           winner: "",
+          hostConnected: true,
           updatedAt: nowMs()
         });
       } catch (error) {
@@ -1467,31 +1478,32 @@ if (
 
     ensureTokenOwnership().then((allowed) => {
       if (!allowed) return;
+
       setModeDisplay();
       updateOwnPresence(true);
       startHeartbeat();
-    });
 
-    onSnapshot(roomRef, async (snapshot) => {
-      if (!snapshot.exists()) {
-        statusTextEl.textContent = "Room wurde gelöscht oder nicht gefunden.";
-        opponentStatusTextEl.textContent = "-";
-        return;
-      }
-
-      const game = snapshot.data();
-
-      if (roomShouldBeDeleted(game)) {
-        try {
-          await deleteDoc(roomRef);
-          statusTextEl.textContent = "Room war inaktiv und wurde gelöscht.";
-        } catch (error) {
-          console.error(error);
+      onSnapshot(roomRef, async (snapshot) => {
+        if (!snapshot.exists()) {
+          statusTextEl.textContent = "Room wurde gelöscht oder nicht gefunden.";
+          opponentStatusTextEl.textContent = "-";
+          return;
         }
-        return;
-      }
 
-      applySnapshot(game);
+        const game = snapshot.data();
+
+        if (roomShouldBeDeleted(game)) {
+          try {
+            await deleteDoc(roomRef);
+            statusTextEl.textContent = "Room war inaktiv und wurde gelöscht.";
+          } catch (error) {
+            console.error(error);
+          }
+          return;
+        }
+
+        applySnapshot(game);
+      });
     });
 
     window.addEventListener("pagehide", handleBestEffortLeave);
