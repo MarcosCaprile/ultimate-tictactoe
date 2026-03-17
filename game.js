@@ -113,6 +113,58 @@ function calculateNewRatings(hostRating, guestRating, hostScore, guestScore) {
   };
 }
 
+function getOwnRatingDeltaText(game) {
+  if (!isOnlineGame || !game) return "";
+
+  if (game.ratingError) {
+    return "Rating konnte nicht aktualisiert werden.";
+  }
+
+  if (!game.ratingApplied) {
+    return "Rating wird berechnet...";
+  }
+
+  const delta = playerSymbol === "X" ? game.hostRatingDelta : game.guestRatingDelta;
+
+  if (typeof delta !== "number") return "Rating aktualisiert.";
+
+  if (delta > 0) return `Rating: +${delta}`;
+  if (delta < 0) return `Rating: ${delta}`;
+  return "Rating: ±0";
+}
+
+function getOnlineResultText(game) {
+  if (!game) {
+    return {
+      type: "draw",
+      title: "Spiel beendet",
+      subtitle: "Ergebnis wird geladen..."
+    };
+  }
+
+  if (game.winner === playerSymbol) {
+    return {
+      type: "win",
+      title: "Du gewinnst!",
+      subtitle: game.ratingApplied ? getOwnRatingDeltaText(game) : "Rating wird berechnet..."
+    };
+  }
+
+  if (game.winner === "draw") {
+    return {
+      type: "draw",
+      title: "Unentschieden",
+      subtitle: game.ratingApplied ? getOwnRatingDeltaText(game) : "Rating wird berechnet..."
+    };
+  }
+
+  return {
+    type: "loss",
+    title: "Du verlierst",
+    subtitle: game.ratingApplied ? getOwnRatingDeltaText(game) : "Rating wird berechnet..."
+  };
+}
+
 async function applyOnlineGameResultIfNeeded(game) {
   if (!isOnlineGame || !currentGameId) return;
   if (!game) return;
@@ -219,11 +271,28 @@ async function applyOnlineGameResultIfNeeded(game) {
       transaction.update(gameRef, {
         ratingApplied: true,
         ratingAppliedAt: nowMs(),
+        hostRatingBefore: hostRating,
+        guestRatingBefore: guestRating,
+        hostRatingAfter: newHostRating,
+        guestRatingAfter: newGuestRating,
+        hostRatingDelta: hostDelta,
+        guestRatingDelta: guestDelta,
         updatedAt: nowMs()
       });
     });
   } catch (error) {
     console.error("Fehler beim Anwenden des ELO-Ergebnisses:", error);
+
+    try {
+      await updateDoc(gameRef, {
+        ratingApplied: true,
+        ratingAppliedAt: nowMs(),
+        ratingError: true,
+        updatedAt: nowMs()
+      });
+    } catch (secondError) {
+      console.error("Fehler beim Fallback-Update:", secondError);
+    }
   } finally {
     ratingApplyInProgress = false;
   }
@@ -622,18 +691,6 @@ function showResultOverlay(type, title, subtitle) {
   ultimateBoard.appendChild(resultOverlay);
 }
 
-function getOwnRatingDeltaText(game) {
-  if (!isOnlineGame || !game || !game.ratingApplied) return "Rating wird berechnet...";
-
-  const delta = playerSymbol === "X" ? game.hostRatingDelta : game.guestRatingDelta;
-
-  if (typeof delta !== "number") return "Rating wird berechnet...";
-
-  if (delta > 0) return `Rating: +${delta}`;
-  if (delta < 0) return `Rating: ${delta}`;
-  return "Rating: ±0";
-}
-
 function updateResultOverlay() {
   if (!gameOver) {
     clearResultOverlay();
@@ -643,23 +700,14 @@ function updateResultOverlay() {
   const normalizedGlobalBoard = miniBoardWinners.map((value) => (value === "draw" ? "" : value));
   const globalWinner = getWinner(normalizedGlobalBoard);
 
-  if (!globalWinner && miniBoardWinners.every((value) => value !== "")) {
-    if (isOnlineGame) {
-      showResultOverlay("draw", "Unentschieden", getOwnRatingDeltaText(currentGameData));
-    } else {
-      showResultOverlay("draw", "Unentschieden", "Keiner konnte das große Feld für sich entscheiden.");
-    }
+  if (isOnlineGame) {
+    const result = getOnlineResultText(currentGameData);
+    showResultOverlay(result.type, result.title, result.subtitle);
     return;
   }
 
-  if (isOnlineGame) {
-    if (globalWinner === playerSymbol) {
-      showResultOverlay("win", "Du gewinnst!", getOwnRatingDeltaText(currentGameData));
-    } else if (globalWinner) {
-      showResultOverlay("loss", "Du verlierst", getOwnRatingDeltaText(currentGameData));
-    } else {
-      showResultOverlay("draw", "Unentschieden", getOwnRatingDeltaText(currentGameData));
-    }
+  if (!globalWinner && miniBoardWinners.every((value) => value !== "")) {
+    showResultOverlay("draw", "Unentschieden", "Keiner konnte das große Feld für sich entscheiden.");
     return;
   }
 
@@ -892,29 +940,29 @@ async function applyGameSnapshot(game) {
   cellStates = Array.isArray(game.cellStates) ? game.cellStates : Array(81).fill("");
   miniBoardWinners = Array.isArray(game.miniBoardWinners) ? game.miniBoardWinners : Array(9).fill("");
 
-      if (game.winner === "X" || game.winner === "O") {
+  if (game.winner === "X" || game.winner === "O" || game.winner === "draw") {
     gameOver = true;
 
-    if (game.winner === playerSymbol) {
-      statusTextEl.textContent = game.ratingApplied
-        ? `Du gewinnst! ${getOwnRatingDeltaText(game)}`
-        : "Du gewinnst! Rating wird berechnet...";
+    if (isOnlineGame) {
+      const result = getOnlineResultText(game);
+      statusTextEl.textContent = `${result.title} ${result.subtitle}`;
+    } else if (game.winner === "X" || game.winner === "O") {
+      statusTextEl.textContent = `Spieler ${game.winner} gewinnt das Spiel!`;
     } else {
-      statusTextEl.textContent = game.ratingApplied
-        ? `Du verlierst. ${getOwnRatingDeltaText(game)}`
-        : "Du verlierst. Rating wird berechnet...";
+      statusTextEl.textContent = "Unentschieden!";
     }
-  } else if (game.winner === "draw") {
-    gameOver = true;
-    statusTextEl.textContent = game.ratingApplied
-      ? `Unentschieden. ${getOwnRatingDeltaText(game)}`
-      : "Unentschieden! Rating wird berechnet...";
-  } else 
+  } else {
+    gameOver = false;
+    statusTextEl.textContent =
+      currentPlayer === playerSymbol
+        ? "Du bist am Zug."
+        : `Spieler ${currentPlayer} ist am Zug.`;
+  }
 
   render();
 
-  if (isOnlineGame) {
-    await applyOnlineGameResultIfNeeded(game);
+  if (isOnlineGame && gameOver && !game.ratingApplied) {
+    applyOnlineGameResultIfNeeded(game);
   }
 }
 

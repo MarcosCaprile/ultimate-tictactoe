@@ -2,9 +2,9 @@ import { auth, db } from "./firebase.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   collection,
-  getDocs,
   doc,
-  getDoc
+  getDoc,
+  onSnapshot
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const myRankTextEl = document.getElementById("myRankText");
@@ -15,6 +15,9 @@ const myRecordTextEl = document.getElementById("myRecordText");
 const leaderboardListEl = document.getElementById("leaderboardList");
 const leaderboardHintEl = document.getElementById("leaderboardHint");
 
+let currentUser = null;
+let unsubscribeLeaderboard = null;
+
 function createLeaderboardRow(player, rank, isMe) {
   const row = document.createElement("div");
   row.className = "room-code-box";
@@ -23,6 +26,7 @@ function createLeaderboardRow(player, rank, isMe) {
   row.style.gap = "12px";
   row.style.alignItems = "center";
   row.style.marginBottom = "12px";
+
   if (isMe) {
     row.style.borderColor = "rgba(96, 165, 250, 0.55)";
     row.style.boxShadow = "0 0 0 1px rgba(96, 165, 250, 0.18)";
@@ -53,40 +57,26 @@ function createLeaderboardRow(player, rank, isMe) {
   return row;
 }
 
-async function loadLeaderboard(currentUser) {
-  leaderboardHintEl.textContent = "Leaderboard wird geladen...";
+function renderLeaderboard(players) {
   leaderboardListEl.innerHTML = "";
-
-  const snapshot = await getDocs(collection(db, "users"));
-  const players = snapshot.docs.map((docSnap) => ({
-    id: docSnap.id,
-    ...docSnap.data()
-  }));
-
-  players.sort((a, b) => {
-    const ratingDiff = (b.rating ?? 1000) - (a.rating ?? 1000);
-    if (ratingDiff !== 0) return ratingDiff;
-
-    const winDiff = (b.wins ?? 0) - (a.wins ?? 0);
-    if (winDiff !== 0) return winDiff;
-
-    return (a.username ?? "").localeCompare(b.username ?? "");
-  });
 
   if (players.length === 0) {
     leaderboardHintEl.textContent = "Noch keine Spieler im Leaderboard.";
+    myRankTextEl.textContent = "-";
     return;
   }
 
   leaderboardHintEl.textContent = `${players.length} Spieler geladen.`;
 
   let myRank = "-";
+  let myFound = false;
 
   players.forEach((player, index) => {
     const rank = index + 1;
     const isMe = currentUser && player.id === currentUser.uid;
 
     if (isMe) {
+      myFound = true;
       myRank = `#${rank}`;
       myUsernameTextEl.textContent = player.username ?? "-";
       myRatingTextEl.textContent = String(player.rating ?? 1000);
@@ -97,26 +87,87 @@ async function loadLeaderboard(currentUser) {
   });
 
   myRankTextEl.textContent = myRank;
+
+  if (currentUser && !myFound) {
+    myUsernameTextEl.textContent = "Nicht gefunden";
+    myRatingTextEl.textContent = "-";
+    myRecordTextEl.textContent = "-";
+  }
+}
+
+function sortPlayers(players) {
+  return [...players].sort((a, b) => {
+    const ratingDiff = (b.rating ?? 1000) - (a.rating ?? 1000);
+    if (ratingDiff !== 0) return ratingDiff;
+
+    const winDiff = (b.wins ?? 0) - (a.wins ?? 0);
+    if (winDiff !== 0) return winDiff;
+
+    const lossDiff = (a.losses ?? 0) - (b.losses ?? 0);
+    if (lossDiff !== 0) return lossDiff;
+
+    const drawDiff = (b.draws ?? 0) - (a.draws ?? 0);
+    if (drawDiff !== 0) return drawDiff;
+
+    return (a.username ?? "").localeCompare(b.username ?? "");
+  });
+}
+
+function subscribeToLeaderboard() {
+  if (unsubscribeLeaderboard) {
+    unsubscribeLeaderboard();
+    unsubscribeLeaderboard = null;
+  }
+
+  leaderboardHintEl.textContent = "Leaderboard wird live geladen...";
+
+  unsubscribeLeaderboard = onSnapshot(
+    collection(db, "users"),
+    (snapshot) => {
+      const players = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }));
+
+      const sortedPlayers = sortPlayers(players);
+      renderLeaderboard(sortedPlayers);
+    },
+    (error) => {
+      console.error("Fehler beim Laden des Leaderboards:", error);
+      leaderboardHintEl.textContent = "Fehler beim Laden des Leaderboards.";
+    }
+  );
 }
 
 onAuthStateChanged(auth, async (user) => {
+  currentUser = user ?? null;
+
   if (!user) {
     myRankTextEl.textContent = "-";
     myUsernameTextEl.textContent = "Nicht eingeloggt";
     myRatingTextEl.textContent = "-";
     myRecordTextEl.textContent = "-";
-    await loadLeaderboard(null);
+    subscribeToLeaderboard();
     return;
   }
 
-  const userRef = doc(db, "users", user.uid);
-  const snap = await getDoc(userRef);
+  try {
+    const userRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userRef);
 
-  if (!snap.exists()) {
-    myUsernameTextEl.textContent = "Profil fehlt";
-    myRatingTextEl.textContent = "-";
-    myRecordTextEl.textContent = "-";
+    if (!snap.exists()) {
+      myUsernameTextEl.textContent = "Profil fehlt";
+      myRatingTextEl.textContent = "-";
+      myRecordTextEl.textContent = "-";
+    } else {
+      const profile = snap.data();
+      myUsernameTextEl.textContent = profile.username ?? "-";
+      myRatingTextEl.textContent = String(profile.rating ?? 1000);
+      myRecordTextEl.textContent = `${profile.wins ?? 0} / ${profile.losses ?? 0} / ${profile.draws ?? 0}`;
+    }
+  } catch (error) {
+    console.error("Fehler beim Laden des Profils:", error);
   }
 
-  await loadLeaderboard(user);
+  subscribeToLeaderboard();
 });
