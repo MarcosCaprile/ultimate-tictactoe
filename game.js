@@ -96,6 +96,25 @@ function boardName(index) {
   return `Reihe ${row}, Spalte ${col}`;
 }
 
+function updateGameActionButtons() {
+  if (!resetBtn || !leaveGameBtn) return;
+
+  if (isOnlineGame) {
+    resetBtn.style.display = "none";
+    leaveGameBtn.style.display = "inline-flex";
+    return;
+  }
+
+  resetBtn.style.display = "inline-flex";
+  leaveGameBtn.style.display = "none";
+
+  if (isBotGame) {
+    resetBtn.textContent = "Bot-Spiel neu starten";
+  } else {
+    resetBtn.textContent = "Lokales Spiel neu starten";
+  }
+}
+
 function expectedScore(playerRating, opponentRating) {
   return 1 / (1 + Math.pow(10, (opponentRating - playerRating) / 400));
 }
@@ -1031,6 +1050,7 @@ function initLocalGame() {
   gameSubtitleEl.textContent = "Lokales Spiel auf einem Gerät.";
   statusTextEl.textContent = "Spiel läuft";
 
+  updateGameActionButtons();
   createBoard();
   render();
 }
@@ -1054,6 +1074,7 @@ function initBotGame(mode) {
   gameSubtitleEl.textContent = `Offline gegen einen smarteren Bot (${botDifficulty}).`;
   statusTextEl.textContent = "Du bist am Zug.";
 
+  updateGameActionButtons();
   createBoard();
   render();
 }
@@ -1093,6 +1114,7 @@ async function initOnlineGame(user) {
   gameIdTextEl.textContent = currentGameId;
   gameSubtitleEl.textContent = `${game.hostUsername} vs. ${game.guestUsername}`;
 
+  updateGameActionButtons();
   createBoard();
 
   onSnapshot(gameRef, async (snapshot) => {
