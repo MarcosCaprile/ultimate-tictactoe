@@ -168,6 +168,9 @@ async function applyOnlineGameResultIfNeeded(game) {
         guestScore
       );
 
+      const hostDelta = newHostRating - hostRating;
+      const guestDelta = newGuestRating - guestRating;
+
       const hostPatch = {
         rating: newHostRating,
         currentGameId: null,
@@ -619,6 +622,18 @@ function showResultOverlay(type, title, subtitle) {
   ultimateBoard.appendChild(resultOverlay);
 }
 
+function getOwnRatingDeltaText(game) {
+  if (!isOnlineGame || !game || !game.ratingApplied) return "Rating wird berechnet...";
+
+  const delta = playerSymbol === "X" ? game.hostRatingDelta : game.guestRatingDelta;
+
+  if (typeof delta !== "number") return "Rating wird berechnet...";
+
+  if (delta > 0) return `Rating: +${delta}`;
+  if (delta < 0) return `Rating: ${delta}`;
+  return "Rating: ±0";
+}
+
 function updateResultOverlay() {
   if (!gameOver) {
     clearResultOverlay();
@@ -629,17 +644,21 @@ function updateResultOverlay() {
   const globalWinner = getWinner(normalizedGlobalBoard);
 
   if (!globalWinner && miniBoardWinners.every((value) => value !== "")) {
-    showResultOverlay("draw", "Unentschieden", "Keiner konnte das große Feld für sich entscheiden.");
+    if (isOnlineGame) {
+      showResultOverlay("draw", "Unentschieden", getOwnRatingDeltaText(currentGameData));
+    } else {
+      showResultOverlay("draw", "Unentschieden", "Keiner konnte das große Feld für sich entscheiden.");
+    }
     return;
   }
 
   if (isOnlineGame) {
     if (globalWinner === playerSymbol) {
-      showResultOverlay("win", "Du gewinnst!", "Dein Rating wird jetzt aktualisiert.");
+      showResultOverlay("win", "Du gewinnst!", getOwnRatingDeltaText(currentGameData));
     } else if (globalWinner) {
-      showResultOverlay("loss", "Du verlierst", "Das Rating wird jetzt aktualisiert.");
+      showResultOverlay("loss", "Du verlierst", getOwnRatingDeltaText(currentGameData));
     } else {
-      showResultOverlay("draw", "Unentschieden", "Das Rating wird jetzt aktualisiert.");
+      showResultOverlay("draw", "Unentschieden", getOwnRatingDeltaText(currentGameData));
     }
     return;
   }
@@ -873,19 +892,24 @@ async function applyGameSnapshot(game) {
   cellStates = Array.isArray(game.cellStates) ? game.cellStates : Array(81).fill("");
   miniBoardWinners = Array.isArray(game.miniBoardWinners) ? game.miniBoardWinners : Array(9).fill("");
 
-  if (game.winner === "X" || game.winner === "O") {
+      if (game.winner === "X" || game.winner === "O") {
     gameOver = true;
-    statusTextEl.textContent = `Spieler ${game.winner} gewinnt das Spiel!`;
+
+    if (game.winner === playerSymbol) {
+      statusTextEl.textContent = game.ratingApplied
+        ? `Du gewinnst! ${getOwnRatingDeltaText(game)}`
+        : "Du gewinnst! Rating wird berechnet...";
+    } else {
+      statusTextEl.textContent = game.ratingApplied
+        ? `Du verlierst. ${getOwnRatingDeltaText(game)}`
+        : "Du verlierst. Rating wird berechnet...";
+    }
   } else if (game.winner === "draw") {
     gameOver = true;
-    statusTextEl.textContent = "Unentschieden!";
-  } else {
-    gameOver = false;
-    statusTextEl.textContent =
-      currentPlayer === playerSymbol
-        ? "Du bist am Zug."
-        : `Spieler ${currentPlayer} ist am Zug.`;
-  }
+    statusTextEl.textContent = game.ratingApplied
+      ? `Unentschieden. ${getOwnRatingDeltaText(game)}`
+      : "Unentschieden! Rating wird berechnet...";
+  } else 
 
   render();
 
